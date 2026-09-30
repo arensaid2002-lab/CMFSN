@@ -23,6 +23,7 @@ endif()
 add_library(nacawing_core
     src/version.cpp
     src/naca.cpp
+    src/upperSurface.cpp
 )
 
 target_include_directories(nacawing_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
