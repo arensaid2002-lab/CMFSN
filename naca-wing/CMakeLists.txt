@@ -48,3 +48,8 @@ enable_testing()
 add_executable(test_version tests/test_version.cpp)
 target_link_libraries(test_version PRIVATE nacawing_core)
 add_test(NAME version COMMAND test_version)
+
+add_executable(test_naca_equation tests/test_naca_equation.cpp)
+target_link_libraries(test_naca_equation PRIVATE nacawing_core)
+add_test(NAME naca_equation COMMAND test_naca_equation)
+

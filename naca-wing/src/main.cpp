@@ -15,6 +15,6 @@ int main()
 {
     std::cout << "NACA wing generator v" << nacawing::version() << '\n';
     std::cout << "Toolchain OK: C++" << __cplusplus / 100 % 100 << " build is running.\n";
-    std::cout << "NACA 4-digit airfoil thickness at x=0.5 for t=0.12 is: " << nacawing::y_t(0.12, 0.5) << '\n';
+    std::cout << "NACA 4-digit airfoil thickness at x=0.5 for t=0.12 is: " << nacawing::y_t(0.12, 1) << '\n';
     return 0;
 }
