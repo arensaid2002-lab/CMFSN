@@ -6,15 +6,16 @@
 //   3. extrusion of the profile into a 3D wing,
 //   4. export to a file a viewer can open.
 
-#include <iostream>
 
-#include "nacawing/version.hpp"
 #include "nacawing/naca.hpp"
 
-int main()
-{
-    std::cout << "NACA wing generator v" << nacawing::version() << '\n';
-    std::cout << "Toolchain OK: C++" << __cplusplus / 100 % 100 << " build is running.\n";
-    std::cout << "NACA 4-digit airfoil thickness at x=0.5 for t=0.12 is: " << nacawing::y_t(0.12, 0.5) << '\n';
-    return 0;
-}
+#include <cmath>
+
+namespace nacawing {
+
+    double y_t(double t, double x)
+        {
+            return 5 * t * (0.2969 * std::sqrt(x) - 0.1260 * x - 0.3516 * std::pow(x, 2) + 0.2843 * std::pow(x, 3) - 0.1015 * std::pow(x, 4));
+        }
+
+    } // namespace nacawing

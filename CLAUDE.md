@@ -27,6 +27,8 @@
 - Keep changes small: one feature per task, so I can review and commit each step.
 
 ## Learning
+- Don't write the code for me: explain, give hints and review. I type the code and
+  run the builds myself. Only write code if I explicitly ask for it.
 - I'm learning C++ and git. Explain what you changed and why, in simple terms.
 - Comment the code, especially the math (NACA equations, units, coordinate
   conventions).
