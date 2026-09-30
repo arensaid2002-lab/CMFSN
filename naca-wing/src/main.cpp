@@ -7,7 +7,7 @@
 //   4. export to a file a viewer can open.
 
 #include <iostream>
-#include "nacawing/upperSurface.hpp"
+#include "nacawing/NACASurface.hpp"
 #include "nacawing/version.hpp"
 #include "nacawing/naca.hpp"
 
@@ -16,9 +16,11 @@ int main()
     std::cout << "NACA wing generator v" << nacawing::version() << '\n';
     std::cout << "Toolchain OK: C++" << __cplusplus / 100 % 100 << " build is running.\n";
     std::cout << "NACA 4-digit airfoil thickness at x=0.5 for t=0.12 is: " << nacawing::y_t(0.12, 0.5) << '\n';
-    std::vector<nacawing::Point2D> list = nacawing::upperSurface(0.12, 11);
-        for (size_t i = 0; i < list.size(); ++i) {
-            std::cout << "Point " << i << ": (" << list[i].x << ", " << list[i].y << ")\n";
-        }
+    std::vector<nacawing::Point2D> upper = nacawing::upperSurface(0.12, 11);
+    std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(0.12, 11);
+        for (size_t i = 0; i < upper.size(); ++i) {
+             std::cout << "Point " << i << ": (" << upper[i].x << ", " << upper[i].y << ", " << lower[i].x << ", " << lower[i].y << ")\n";
+            }
+
     return 0;
 }
