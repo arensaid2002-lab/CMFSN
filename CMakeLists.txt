@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10.0)
 project(CMFSN VERSION 0.1.0 LANGUAGES C CXX)
-
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 ##===========Dependencies===========##
 
 find_package(Eigen3 CONFIG QUIET)
@@ -36,7 +37,6 @@ add_subdirectory(UI)
 
 ##===========Executable===========##
 add_executable(CMFSN Main/main.cpp)
-
 
 ##===========Tests===========##
 include(CTest)
