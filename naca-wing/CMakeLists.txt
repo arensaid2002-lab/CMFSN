@@ -6,8 +6,8 @@ project(NacaWing
     DESCRIPTION "NACA airfoil and wing generator"
     LANGUAGES CXX)
 
-# Use C++17 everywhere, and fail rather than silently fall back to an older standard.
-set(CMAKE_CXX_STANDARD 17)
+# Use C++20 everywhere, and fail rather than silently fall back to an older standard.
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
