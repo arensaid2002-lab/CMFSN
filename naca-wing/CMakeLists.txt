@@ -22,7 +22,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(nacawing_core
     src/version.cpp
-    src/naca.cpp
+    src/NACA.cpp
     src/NACASurface.cpp
 )
 

@@ -1,0 +1,11 @@
+cmake -S . -B build              (1. configure: writes the build files into build\)
+cmake --build build              (2. compile)
+build\Debug\naca_wing.exe        (3. run: writes airfoil.csv)
+ctest --test-dir build -C Debug  (4. run the tests)
+
+
+
+cmake -S . -B build  
+cmake --build build   
+build\Debug\naca_wing.exe 
+ctest --test-dir build -C Debug
