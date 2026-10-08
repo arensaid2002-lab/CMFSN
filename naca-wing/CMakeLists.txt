@@ -54,3 +54,16 @@ add_executable(test_naca_equation tests/test_naca_equation.cpp)
 target_link_libraries(test_naca_equation PRIVATE nacawing_core)
 add_test(NAME naca_equation COMMAND test_naca_equation)
 
+# ---------------------------------------------------------------------------
+# FETCHCONTENT: raylib, a simple graphics library for the GUI.
+# ---------------------------------------------------------------------------
+include(FetchContent)
+FetchContent_Declare(raylib
+    GIT_REPOSITORY https://github.com/raysan5/raylib.git
+    GIT_TAG 5.5            # a fixed version, so the build never changes by surprise
+    GIT_SHALLOW TRUE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)   # don't build raylib's own examples
+FetchContent_MakeAvailable(raylib)
+
+add_executable(naca_viewer src/viewer.cpp)
+target_link_libraries(naca_viewer PRIVATE nacawing_core raylib)
