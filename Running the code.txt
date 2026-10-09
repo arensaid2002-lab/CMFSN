@@ -5,8 +5,13 @@ ctest --test-dir build -C Debug  (4. run the tests)
 
 
 
+cd "C:\Users\EA_Surface_Pro\Documents\4. Github\CMFSN\naca-wing"
 cmake -S . -B build  
 cmake --build build   
 build\Debug\naca_wing.exe 
+<<<<<<< Updated upstream
 build\Debug\naca_viewer.exe 
+=======
+build\Debug\naca_viewer.exe
+>>>>>>> Stashed changes
 ctest --test-dir build -C Debug

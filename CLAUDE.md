@@ -21,7 +21,7 @@
   `git push --force`, `git checkout -- <file>`, `git restore`).
 
 ## Code
-- C++17 with CMake. The build must have zero warnings and all tests must pass
+- C++20 with CMake. The build must have zero warnings and all tests must pass
   before you say a task is done.
 - Don't install software or add dependencies without asking.
 - Keep changes small: one feature per task, so I can review and commit each step.
