@@ -1,10 +1,9 @@
-// Entry point of the NACA wing generator.
+// NACA 4-digit equations: thickness, camber line, camber slope, digit conversion
 //
 // For now it only proves the toolchain works. The next steps will add:
 //   1. the NACA 4-digit airfoil equations (2D profile),
-//   2. a basic primitive (a square) to test the geometry/output pipeline,
-//   3. extrusion of the profile into a 3D wing,
-//   4. export to a file a viewer can open.
+//   2. extrusion of the profile into a 3D wing,
+//   3. export to a file a viewer can open.
 
 
 #include "nacawing/NACA.hpp"
@@ -48,5 +47,16 @@ namespace nacawing {
                 return 2*m / ((1 - p) * (1 - p)) * (p - x);
             }
         }
+
+
+        NacaParams fromDigits(int M, int P, int TT)
+        {
+            NacaParams params;
+            params.m = static_cast<double>(M) / 100.0; // maximum camber, fraction of chord (2 → 0.02)
+            params.p = static_cast<double>(P) / 10.0;  // location of maximum camber
+            params.t = static_cast<double>(TT) / 100.0; // maximum thickness
+            return params;
+        }
+
 
     } // namespace nacawing

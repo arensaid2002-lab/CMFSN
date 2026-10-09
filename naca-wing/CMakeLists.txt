@@ -65,14 +65,14 @@ FetchContent_Declare(raylib
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)   # don't build raylib's own examples
 FetchContent_MakeAvailable(raylib)
 
-include(FetchContent_Declare)
+
 FetchContent_Declare(raygui
     GIT_REPOSITORY https://github.com/raysan5/raygui.git
     GIT_TAG 4.0            # a fixed version, so the build never changes by surprise
     GIT_SHALLOW TRUE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)   # don't build raylib's own examples
 FetchContent_MakeAvailable(raygui)
-target_include_directories(naca_viewer SYSTEM PRIVATE ${raygui_SOURCE_DIR}/src)
 
 add_executable(naca_viewer src/viewer.cpp)
-target_link_libraries(naca_viewer PRIVATE nacawing_core raygui)
+target_include_directories(naca_viewer SYSTEM PRIVATE ${raygui_SOURCE_DIR}/src)
+target_link_libraries(naca_viewer PRIVATE nacawing_core raylib)

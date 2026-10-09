@@ -26,11 +26,15 @@ int main()
 
     // Creating the CSV file with the upper and lower surface coordinates of the NACA 2412 airfoil
     
-    double m = 0.02; // maximum camber
-    double p = 0.4;  // location of maximum camber
-    double t = 0.12; // maximum thickness
+    nacawing::NacaParams airfoil = nacawing::fromDigits(2, 4, 12);
     int n = 101;     // number of points to generate
-    
+
+    double m = airfoil.m; // maximum camber
+    double p = airfoil.p;  // location of maximum camber
+    double t = airfoil.t; // maximum thickness
+    std::cout << "m=" << m << ", p=" << p << ", t=" << t << '\n';
+
+
     std::vector<nacawing::Point2D> upper = nacawing::upperSurface(m, p, t, n); // NACA 
     std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(m, p, t, n);
     std::ofstream file("build/airfoil.csv");

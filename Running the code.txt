@@ -8,4 +8,5 @@ ctest --test-dir build -C Debug  (4. run the tests)
 cmake -S . -B build  
 cmake --build build   
 build\Debug\naca_wing.exe 
+build\Debug\naca_viewer.exe 
 ctest --test-dir build -C Debug
