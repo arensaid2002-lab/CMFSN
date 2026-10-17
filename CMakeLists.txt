@@ -29,6 +29,7 @@ IF(NOT Kokkos_FOUND)
 ENDIF()
 
 ##===========subdirectories===========##
+add_subdirectory(CAD)
 add_subdirectory(Mesh)
 add_subdirectory(Solver)
 add_subdirectory(UI)
