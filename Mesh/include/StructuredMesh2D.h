@@ -1,4 +1,4 @@
-#pragma once, 
+#pragma once
 #include "nacawing/NACASurface.hpp"
 #include <vector>
 
@@ -8,9 +8,10 @@ namespace mesh {
             int ni; 
             int nj;
             std::vector<nacawing::Point2D> nodes;
+            nacawing::Point2D& at(int i, int j) { return nodes[i + j * ni]; }
         };
 
-        nacawing::Point2D& at(int i, int j) { return /* à toi : la formule avec i, j et ni */; }
+        
 
 } // namespace mesh
 
