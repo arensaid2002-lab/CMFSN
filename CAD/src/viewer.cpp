@@ -26,11 +26,13 @@ int main()
         BeginDrawing();                     // start the frame
         ClearBackground(RAYWHITE);          // erase last frame with a white-ish colour
         
-        for (size_t i = 0; i < upper.size(); ++i) {
-        
-            DrawLine(toPixelX(upper[i].x), toPixelY(upper[i].y), toPixelX(lower[i].x), toPixelY(lower[i].y), BLACK);
-        
+        // join each point to the next one on the same surface (i + 1 < size so i+1 stays in range)
+        for (size_t i = 0; i + 1 < upper.size(); ++i) {
+            DrawLine(toPixelX(upper[i].x), toPixelY(upper[i].y), toPixelX(upper[i+1].x), toPixelY(upper[i+1].y), BLACK);
+            DrawLine(toPixelX(lower[i].x), toPixelY(lower[i].y), toPixelX(lower[i+1].x), toPixelY(lower[i+1].y), BLACK);
         }
+        DrawLine(toPixelX(lower[lower.size() - 1].x), toPixelY(lower[lower.size() - 1].y), toPixelX(upper[upper.size() - 1].x), toPixelY(upper[upper.size() - 1].y), BLACK);
+
 
         DrawText("NACA viewer", 20, 20, 20, DARKGRAY);   // text, x, y (pixels from top-left), size, colour
         EndDrawing();                       // show the frame on screen
