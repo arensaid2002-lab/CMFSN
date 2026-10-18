@@ -14,7 +14,7 @@ int main(int, char**)
     
     std::cout<< std::filesystem::current_path() << '\n'; 
 
-    string path = "C:/Users/wali2/Downloads/NACA_0012_mesh_PLOT3D_format/NACA_0012_mesh_PLOT3D_format/x.9";
+    string path = "../../../../NACA_0012_mesh_PLOT3D_format/x.9";
     try
     {
         IO::Import_Mesh(path, MeshData, MeshHandler::MeshFileFormat::Plot3D);
