@@ -3,18 +3,23 @@
 #include "nacawing/NACASurface.hpp"
 #include <cmath>
 #include <vector>
-
-// Creates a vector of points for the upper surface of the NACA airfoil based on the thickness distribution.
+#include <numbers>  // for std::numbers::pi
 
 namespace nacawing {
 
+    // espacement of points using cosine spacing; éviter d'écrire dans les deux
+    double cosineX(int i, int n) { 
+            return 0.5 * (1 - std::cos(std::numbers::pi * static_cast<double>(i) / (n - 1))); 
+        }
 
+
+    // Creates a vector of points for the upper surface of the NACA airfoil based on the thickness distribution.
     std::vector<Point2D> upperSurface(double m, double p, double t, int n)
         {
 
             std::vector<Point2D> upper;
             for (int i = 0; i < n; i++) {   
-                double x = static_cast<double>(i)/(n-1); // x goes from 0 to 1
+                double x = cosineX(i, n); // x goes from 0 to 1 using cosine spacing
                 double y_t = nacawing::y_t(t, x);
                 double y_c= nacawing::y_c(m, p, x); // camber line y_c
                 
@@ -33,7 +38,7 @@ namespace nacawing {
 
             std::vector<Point2D> lower;
             for (int i = 0; i < n; i++) {   
-                double x = static_cast<double>(i)/(n-1); // x goes from 0 to 1
+                double x = cosineX(i, n); // x goes from 0 to 1 using cosine spacing
                 double y_t = nacawing::y_t(t, x);
                 double y_c= nacawing::y_c(m, p, x); // camber line y_c
                 
