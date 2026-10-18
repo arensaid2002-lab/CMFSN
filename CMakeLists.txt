@@ -43,7 +43,7 @@ add_subdirectory(UI)
 ##===========Executable===========##
 add_executable(CMFSN Main/main.cpp)
 
-target_link_libraries(CMFSN PRIVATE IO Mesh)
+target_link_libraries(CMFSN PRIVATE IO Mesh Errors)
 ##===========Tests===========##
 include(CTest)
 enable_testing()
