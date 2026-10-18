@@ -4,7 +4,7 @@ project(CMFSN VERSION 0.1.0 LANGUAGES C CXX)
 ##===========Dependencies===========##
 
 find_package(Eigen3 CONFIG QUIET)
-find_package(Kokkos CONFIG QUIET)
+find_package(Kokkos 5.2.2 EXACT CONFIG QUIET)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 
 
@@ -28,17 +28,21 @@ IF(NOT Kokkos_FOUND)
     FetchContent_MakeAvailable(Kokkos)
 ENDIF()
 
+
 ##===========subdirectories===========##
+add_subdirectory(Errors)
+add_subdirectory(IO)
 add_subdirectory(Mesh)
-add_subdirectory(Solver)
+##add_subdirectory(Solver)
 add_subdirectory(UI)
 
 
 ##===========Executable===========##
 add_executable(CMFSN Main/main.cpp)
 
-
+target_link_libraries(CMFSN PRIVATE IO Mesh)
 ##===========Tests===========##
 include(CTest)
 enable_testing()
+
 
