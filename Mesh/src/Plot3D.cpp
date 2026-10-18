@@ -26,7 +26,7 @@ StructuredMesh2D readPlot3D(const std::string& path)
             file >> mesh.nodes[k].y;                    // 4b. boucle k : lire nodes[k].y
         }
 
-        return mesh;
+        return mesh;            //
 }
 
 } // namespace mesh

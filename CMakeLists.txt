@@ -35,6 +35,7 @@ add_subdirectory(Solver)
 add_subdirectory(UI)
 
 
+
 ##===========Executable===========##
 add_executable(CMFSN Main/main.cpp)
 
@@ -42,4 +43,4 @@ add_executable(CMFSN Main/main.cpp)
 ##===========Tests===========##
 include(CTest)
 enable_testing()
-
+add_subdirectory(tests)   # every test is defined in tests/CMakeLists.txt
