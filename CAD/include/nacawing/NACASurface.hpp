@@ -10,7 +10,7 @@ namespace nacawing {
         double y;
     };
 
-    std::vector<Point2D> upperSurface(double m, double p,double t, int n);
-    std::vector<Point2D> lowerSurface(double m, double p, double t, int n);
+    std::vector<Point2D> upperSurface(double m, double p,double t, int n, double xEnd = 1.0);
+    std::vector<Point2D> lowerSurface(double m, double p, double t, int n, double xEnd = 1.0);
 
 } // namespace nacawing

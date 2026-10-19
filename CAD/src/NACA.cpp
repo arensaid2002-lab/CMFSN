@@ -17,6 +17,11 @@ namespace nacawing {
             return 5 * t * (0.2969 * std::sqrt(x) - 0.1260 * x - 0.3516 * x * x + 0.2843 * x * x * x - 0.1015 * x * x *x * x);
         }
 
+    double dy_t(double t, double x)
+        {
+            return 5 * t * (0.2969 * 0.5 / std::sqrt(x) - 0.1260 - 0.3516 * 2 * x + 0.2843 * 3 * x * x - 0.1015 * 4 * x * x * x);
+        }
+
     double y_c(double m, double p, double x)
         {
             if (m == 0)

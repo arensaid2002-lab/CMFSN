@@ -35,11 +35,6 @@ add_subdirectory(Solver)
 add_subdirectory(UI)
 
 
-
-##===========Executable===========##
-add_executable(CMFSN Main/main.cpp)
-
-
 ##===========Tests===========##
 include(CTest)
 enable_testing()
