@@ -1,0 +1,7 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+   { "label": "build viewers", "type": "cmake", "command": "build",
+  "targets": ["naca_viewer", "mesh_viewer"] }
+  ]
+}

@@ -132,7 +132,11 @@ namespace mesh {
             double x1 = 0.0;
             double x2 = x_TE;
             double xm = 0.0;
-            while (std::abs(phi - phi_real) > 1e-15) {
+            // Old stop test: while (std::abs(phi - phi_real) > 1e-15) {
+            // It hangs on bigger meshes (nc = 128 and up): angleAt is only accurate to a few 1e-16,
+            // so for some points |phi - phi_real| never gets below 1e-15 and the loop never ends.
+            // 60 halvings of [0, x_TE] bring x to the precision of a double, and always stop.
+            for (int it = 0; it < 60; ++it) {
 
                 xm = (x2+x1) * 0.5;
                 phi_real = angleAt(xm, isUpper);

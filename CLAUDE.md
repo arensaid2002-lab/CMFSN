@@ -32,3 +32,9 @@
 - I'm learning C++ and git. Explain what you changed and why, in simple terms.
 - Comment the code, especially the math (NACA equations, units, coordinate
   conventions).
+
+## Honesty
+- Don't assume. If my request can be read more than one way, ask me which one I mean
+  before doing anything.
+- When you don't know something, say "I don't know" instead of guessing. Say which
+  claims you checked (file, line, output, source) and which ones you only inferred.
