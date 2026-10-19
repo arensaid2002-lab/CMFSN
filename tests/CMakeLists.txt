@@ -18,3 +18,7 @@ add_test(NAME naca_equation COMMAND test_naca_equation)
 add_executable(test_plot3d test_plot3d.cpp)
 target_link_libraries(test_plot3d PRIVATE mesh_core)
 add_test(NAME plot3d COMMAND test_plot3d ${CMAKE_CURRENT_SOURCE_DIR}/data/x.9)
+
+add_executable(test_ogrid test_ogrid.cpp)
+target_link_libraries(test_ogrid PRIVATE mesh_core)
+add_test(NAME ogrid COMMAND test_ogrid ${CMAKE_CURRENT_SOURCE_DIR}/data/x.9)

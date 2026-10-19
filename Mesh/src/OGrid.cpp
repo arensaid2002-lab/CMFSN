@@ -1,7 +1,8 @@
 #include "OGrid.h"
 #include <complex>
 #include <cmath>
-#include <numbers> //for pi
+#include <numbers>   //for pi
+#include <algorithm> //for min
 
 //Construction plan
 
@@ -21,13 +22,15 @@
     // 5. wall: for each i, theta_i = -2*pi*i/nc, find x by bisection, keep r_i0
 
     // 6. for each j, for each i: R_j, r_ij (eq. 14),
-    //    zeta = zc + r_ij * std::polar(1.0, theta_i), z = fromCircle(zeta)
-
-    // 7. TE node, seam column, symmetrize if naca.m == 0
+        // zeta = zc + r_ij * std::polar(1.0, theta_i), z = fromCircle(zeta)
+        // r_ij avec l'éq. 14, en utilisant R[0], R[j], R[nc]
+        // zeta = zeta_c + r_ij * std::polar(1.0, theta_i)
+        // z = fromCircle(zeta)
+        // mesh.at(i, j) = {z.real(), z.imag()};
 
 
 namespace mesh {
-// SOURCE : In Pursuit of Grid Convergence for Two-Dimensional Euler Solutions
+    //  SOURCE : In Pursuit of Grid Convergence for Two-Dimensional Euler Solutions
 
     StructuredMesh2D generateOGrid(const nacawing::NacaParams& naca, int nc)
     {
@@ -63,6 +66,7 @@ namespace mesh {
             return (z_1 - z_2 * w) / (1.0 - w);
         };
 
+        
         std::complex<double> zeta_TE = zeta_1;
         std::complex<double> zeta_LE = toCircle(std::complex<double>(0.0, 0.0)); // Leading edge in zeta-plane
         std::complex<double> zeta_c = 0.5 * (zeta_LE + zeta_TE);
@@ -98,38 +102,75 @@ namespace mesh {
 
         //5. Calculating the wall points
 
+        auto surfacePoint = [&](double x_m, bool isUpper) {
+            double s = isUpper ? 1.0 : -1.0;
+            double y_t = nacawing::y_t(naca.t, x_m);
+            double y_c = nacawing::y_c(naca.m, naca.p, x_m); // camber line y_c
+            double theta = std::atan(nacawing::dyc_dx(naca.m, naca.p, x_m));
+            // Calculate the surface coordinates
+            double x_surf = x_m - s * y_t * std::sin(theta); // surface x coordinate
+            double y_surf = y_c + s * y_t * std::cos(theta); // surface = camber line + half-thickne
+            std::complex<double> z = std::complex<double>(x_surf, y_surf);
+            return z;
+        };
 
-            auto AngleAtlower = [&](std::complex<double> x) {
+        auto angleAt = [&](double x, bool isUpper) {
+            return std::abs(std::arg(toCircle(surfacePoint(x, isUpper)) - zeta_c));
+        };
 
-                if (i > nc / 2); {
-                std::complex<double> z = std::complex<double>(lower[x].x, lower[x].y); //point in physical plane
-                std::complex<double> zeta_x = toCircle(z); //point in zeta-plane
-                return std::arg(zeta_x - zeta_c);
+
+            
+        // bissection method to find x such that angleAt(x, isUpper) = phi
+        std::vector<std::complex<double>> wall(nc + 1);
+        wall[0] = wall[nc] = z_1;
+
+        for (int i = 1; i < nc; ++i) {          
+            bool isUpper = (i > nc / 2);
+            double phi = 2.0 * std::numbers::pi * std::min(i, nc - i) / nc;
+            // bisection on x in [0, x_TE] with angleAt(x, isUpper)
+            double phi_real = 0.0;
+            double x1 = 0.0;
+            double x2 = x_TE;
+            double xm = 0.0;
+            while (std::abs(phi - phi_real) > 1e-15) {
+
+                xm = (x2+x1) * 0.5;
+                phi_real = angleAt(xm, isUpper);
+                if (phi_real > phi) {
+                    x1 = xm;
+                } else {
+                    x2 = xm;
                 }
- 
-                else {
-                std::complex<double> z = std::complex<double>(upper[x].x, upper[x].y); //point in physical plane
-                std::complex<double> zeta_x = toCircle(z); //point in zeta-plane
-                return std::arg(zeta_x - zeta_c);
-                }   
-                
-            for (int i = 0; i < nc; ++i) {
-                double theta = -2.0 * std::numbers::pi * i / nc;
-                // find the wall node for this angle
-                
 
-                    
-                };  
+            } 
+            wall[i] = surfacePoint(xm, isUpper);
 
+            }
 
+    // 6. for each j, for each i: R_j, r_ij (eq. 14),
+    //    zeta = zc + r_ij * std::polar(1.0, theta_i), z = fromCircle(zeta)
+        std::vector<double> R;
+        for (int j = 0; j <= nc; ++j) {
+            // eq. 13 - perfect circle of radius R; j starts at 0 so (j +1 -1)*2*pi
+            R.push_back(R1 * std::exp((static_cast<double>(j)) * 2.0 * std::numbers::pi / nc ));
+        }
 
-                   
+    // eq. 14 - radial coordinate
+        mesh.ni = mesh.nj = nc + 1;
+        mesh.nodes.resize((nc + 1) * (nc + 1));   // sinon at() écrit hors du vecteur
 
+        for (int i = 0; i <= nc; ++i) {
+            double theta_i = -2.0 * std::numbers::pi * i / nc;
+            double r_i0 = std::abs(toCircle(wall[i]) - zeta_c);   // rayon du quasi-cercle sur ce rayon
+            
+            for (int j = 0; j <= nc; ++j) {
+                double r_ij = (r_i0 * (R[nc] - R[0]) + R[nc] * (R[j] - R[0])) / (R[nc] - R[0]);  // radial coordinate ; eq.14 - r_ij avec l'éq. 14, en utilisant R[0], R[j], R[nc]
+                std::complex<double> zeta = zeta_c + r_ij * std::polar(1.0, theta_i);
+                std::complex<double> z = fromCircle(zeta);
+                mesh.at(i, j) = {z.real(), z.imag()};
+            }
+        }
 
-
-
-
-        return mesh;
-    }
-
+        return mesh;    
+        }
 } // namespace mesh
