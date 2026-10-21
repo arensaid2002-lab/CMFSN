@@ -1,6 +1,6 @@
 #include <iostream>
-#include "MeshHandler.h"
-using namespace std;
+
+#include <MeshHandler.h>
 
 namespace Mesh
 {

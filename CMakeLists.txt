@@ -27,23 +27,37 @@ IF(NOT Kokkos_FOUND)
         Kokkos
         GIT_REPOSITORY https://github.com/kokkos/kokkos.git
         GIT_TAG 5.2.2
+        SYSTEM
     )
     FetchContent_MakeAvailable(Kokkos)
 ENDIF()
 
+if(MSVC)
+    foreach(kokkos_target IN ITEMS kokkoscore kokkoscontainers)
+        target_compile_definitions(${kokkos_target} PRIVATE
+            _CRT_SECURE_NO_WARNINGS
+        )
+
+        target_compile_options(${kokkos_target} PRIVATE
+            /wd4244
+            /wd4267
+        )
+    endforeach()
+endif()
+
 
 ##===========subdirectories===========##
-add_subdirectory(Errors)
 add_subdirectory(IO)
 add_subdirectory(Mesh)
-##add_subdirectory(Solver)
+add_subdirectory(Solver)
+add_subdirectory(NumOps)
 add_subdirectory(UI)
 
 
 ##===========Executable===========##
 add_executable(CMFSN Main/main.cpp)
 
-target_link_libraries(CMFSN PRIVATE IO Mesh Errors)
+target_link_libraries(CMFSN PRIVATE IO Mesh NumOps)
 ##===========Tests===========##
 include(CTest)
 enable_testing()

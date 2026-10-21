@@ -1,8 +1,8 @@
 #pragma once 
 
 #include <iostream>
-#include <Vector>
-#include "MeshFormat.h"
+
+#include <MeshFormat.h>
 
 using namespace std;
 namespace Mesh
@@ -22,7 +22,6 @@ namespace Mesh
         ~MeshHandler() = default;
         
         MeshData_Euler& get_Mesh_Euler();
-
 
         private:
 
