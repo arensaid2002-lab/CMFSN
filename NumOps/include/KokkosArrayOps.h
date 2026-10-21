@@ -67,7 +67,7 @@ namespace NumOps
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator+(const Kokkos::Array<T, N>& A, const S& b)
     {
-        Kokkos::Array<T, N> C{};
+        Kokkos::Array<T, N> C;
 
         for (size_t i = 0; i < N; i++)
         {
@@ -80,7 +80,7 @@ namespace NumOps
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator+(const S& b, const Kokkos::Array<T, N>& A)
     {
-        Kokkos::Array<T, N> C{};
+        Kokkos::Array<T, N> C;
 
         for (size_t i = 0; i < N; i++)
         {
@@ -94,7 +94,7 @@ namespace NumOps
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator-(const Kokkos::Array<T, N>& A, const S& b)
     {
-        Kokkos::Array<T, N> C{};
+        Kokkos::Array<T, N> C;
 
         for (size_t i = 0; i < N; i++)
         {
@@ -107,7 +107,7 @@ namespace NumOps
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator-(const S& b, const Kokkos::Array<T, N>& A)
     {
-        Kokkos::Array<T, N> C{};
+        Kokkos::Array<T, N> C;
 
         for (size_t i = 0; i < N; i++)
         {
@@ -121,7 +121,7 @@ namespace NumOps
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator *(const Kokkos::Array<T, N>& A, const S& b)
     {
-        Kokkos::Array<T, N> C{};
+        Kokkos::Array<T, N> C;
 
         for (size_t i = 0; i < N; i++)
         {
@@ -134,7 +134,7 @@ namespace NumOps
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator *(const S& b, const Kokkos::Array<T, N>& A)
     {
-        Kokkos::Array<T, N> C{};
+        Kokkos::Array<T, N> C;
 
         for (size_t i = 0; i < N; i++)
         {
@@ -148,7 +148,7 @@ namespace NumOps
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator/(const Kokkos::Array<T, N>& A, const S& b)
     {
-        Kokkos::Array<T, N> C{};
+        Kokkos::Array<T, N> C;
 
         for (size_t i = 0; i < N; i++)
         {
@@ -162,7 +162,7 @@ namespace NumOps
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator/(const S& b, const Kokkos::Array<T, N>& A)
     {
-        Kokkos::Array<T, N> C{};
+        Kokkos::Array<T, N> C;
 
         for (size_t i = 0; i < N; i++)
         {
