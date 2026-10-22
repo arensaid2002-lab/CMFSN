@@ -18,8 +18,11 @@
 
 int main()
 {
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);  // must come before InitWindow: lets you drag the window edges
     InitWindow(800, 450, "O-grid viewer");  // a second program, so a second window next to naca_viewer
+    SetWindowMinSize(640, 360);             // small enough to shrink, big enough for the buttons
     SetTargetFPS(60);
+    int screenW = GetScreenWidth(), screenH = GetScreenHeight();   // last known size, to measure a resize
 
     int digitM = 0, digitP = 0, digitTT = 12;   // NACA 0012, the airfoil of the reference grids
     int m = digitM, p = digitP, tt = digitTT;   // what the spinners show: can be invalid for a moment (2012 on the way to 2412)
@@ -39,6 +42,7 @@ int main()
     airfoilView.target = {0.5f, 0.0f};   // mid-chord in the middle of the window
     airfoilView.zoom = 600.0f;
     Camera2D farView = airfoilView;
+    float farRadius = 1.0f;                 // distance from mid-chord to the far field, in chords
 
     // Rebuilds everything that depends on the airfoil or on nc.
     auto load = [&]() {
@@ -49,7 +53,8 @@ int main()
 
         // the far field is ~150 chords away (more for thick or cambered airfoils): fit its radius in the window
         nacawing::Point2D far = grid.at(0, grid.nj - 1);
-        farView.zoom = 0.45f * 450.0f / static_cast<float>(std::hypot(far.x - 0.5, far.y));
+        farRadius = static_cast<float>(std::hypot(far.x - 0.5, far.y));
+        farView.zoom = 0.45f * static_cast<float>(GetScreenHeight()) / farRadius;
     };
     load();
 
@@ -77,6 +82,31 @@ int main()
 
     while (!WindowShouldClose())            // true when you click X or press Esc
     {
+        // Window resized: move every camera's offset by half the size change, so the view stays centred.
+        if (IsWindowResized()) {
+            float dx = 0.5f * static_cast<float>(GetScreenWidth() - screenW);
+            float dy = 0.5f * static_cast<float>(GetScreenHeight() - screenH);
+            screenW = GetScreenWidth();
+            screenH = GetScreenHeight();
+            for (Camera2D* c : {&cam, &airfoilView, &farView}) {
+                c->offset.x += dx;
+                c->offset.y += dy;
+            }
+            farView.zoom = 0.45f * static_cast<float>(screenH) / farRadius;   // the far field still fits
+        }
+        float right = static_cast<float>(GetScreenWidth());   // buttons are placed from the right edge
+        float bottom = static_cast<float>(GetScreenHeight());
+
+        // UI scale: 1 for the 800 x 450 start window, 2 at 1600 x 900. Buttons and text are sized for 800 x 450
+        // and multiplied by s. S() is for rectangles (float pixels), F() for DrawText font sizes (int pixels).
+        float s = std::fmin(right / 800.0f, bottom / 450.0f);
+        auto S = [s](float v) { return v * s; };
+        auto F = [s](int size) { return static_cast<int>(static_cast<float>(size) * s); };
+        GuiSetStyle(DEFAULT, TEXT_SIZE, F(10));            // raygui defaults: text 10, spinner buttons 24 wide,
+        GuiSetStyle(SPINNER, SPIN_BUTTON_WIDTH, F(24));    // 2 px between spinner buttons and between toggles
+        GuiSetStyle(SPINNER, SPIN_BUTTON_SPACING, F(2));
+        GuiSetStyle(TOGGLE, GROUP_PADDING, F(2));
+
         // Zoom toward the mouse: pin the point under the mouse, then scale around it.
         float wheel = GetMouseWheelMove();
         if (wheel != 0.0f) {
@@ -108,17 +138,17 @@ int main()
         EndMode2D();
 
         // Buttons are drawn after EndMode2D, in screen pixels. They return their new state through the pointer.
-        GuiToggle(Rectangle{570, 15, 104, 24}, "Computed", &showComputed);
-        GuiToggle(Rectangle{676, 15, 104, 24}, "Reference", &showReference);
+        GuiToggle(Rectangle{right - S(230), S(15), S(104), S(24)}, "Computed", &showComputed);
+        GuiToggle(Rectangle{right - S(124), S(15), S(104), S(24)}, "Reference", &showReference);
 
         int clicked = level;
-        GuiToggleGroup(Rectangle{570, 45, 40, 24}, "8;16;32;64;128", &clicked);   // one item per level, side by side
+        GuiToggleGroup(Rectangle{right - S(230), S(45), S(40), S(24)}, "8;16;32;64;128", &clicked);   // one item per level, side by side
 
         // NACA digits. A spinner returns 1 when its number box is clicked: that switches typing on or off.
-        DrawText("NACA", 525, 81, 10, DARKGRAY);
-        if (GuiSpinner(Rectangle{570, 75, 66, 24}, nullptr, &m, 0, 9, editM)) editM = !editM;
-        if (GuiSpinner(Rectangle{642, 75, 66, 24}, nullptr, &p, 0, 9, editP)) editP = !editP;
-        if (GuiSpinner(Rectangle{714, 75, 66, 24}, nullptr, &tt, 1, 40, editTT)) editTT = !editTT;
+        DrawText("NACA", static_cast<int>(right - S(275)), F(81), F(10), DARKGRAY);
+        if (GuiSpinner(Rectangle{right - S(230), S(75), S(66), S(24)}, nullptr, &m, 0, 9, editM)) editM = !editM;
+        if (GuiSpinner(Rectangle{right - S(158), S(75), S(66), S(24)}, nullptr, &p, 0, 9, editP)) editP = !editP;
+        if (GuiSpinner(Rectangle{right - S(86), S(75), S(66), S(24)}, nullptr, &tt, 1, 40, editTT)) editTT = !editTT;
 
         bool valid = (m == 0) == (p == 0);  // camber M needs its position P, and P means nothing without M
         bool changed = clicked != level || m != digitM || p != digitP || tt != digitTT;
@@ -131,17 +161,17 @@ int main()
             load();
         }
 
-        DrawText(TextFormat("O-grid NACA %i%i%02i, nc = %i", digitM, digitP, digitTT, nc), 20, 20, 20, DARKGRAY);
-        DrawText("computed", 20, 48, 10, BLUE);
+        DrawText(TextFormat("O-grid NACA %i%i%02i, nc = %i", digitM, digitP, digitTT, nc), F(20), F(20), F(20), DARKGRAY);
+        DrawText("computed", F(20), F(48), F(10), BLUE);
         if (!is0012)
-            DrawText("reference grids exist for NACA 0012 only", 80, 48, 10, GRAY);
+            DrawText("reference grids exist for NACA 0012 only", F(80), F(48), F(10), GRAY);
         else if (reference.nodes.empty())
-            DrawText(TextFormat("reference %s not found in %s", referenceFile.c_str(), REF_DIR), 80, 48, 10, RED);
+            DrawText(TextFormat("reference %s not found in %s", referenceFile.c_str(), REF_DIR), F(80), F(48), F(10), RED);
         else
-            DrawText(TextFormat("reference %s", referenceFile.c_str()), 80, 48, 10, ORANGE);
+            DrawText(TextFormat("reference %s", referenceFile.c_str()), F(80), F(48), F(10), ORANGE);
         if (!valid)
-            DrawText(TextFormat("NACA %i%i%02i: M and P must be both 0 or both > 0", m, p, tt), 20, 64, 10, RED);
-        DrawText("wheel: zoom   right-drag: move   R: airfoil   F: far field", 20, 420, 10, GRAY);
+            DrawText(TextFormat("NACA %i%i%02i: M and P must be both 0 or both > 0", m, p, tt), F(20), F(64), F(10), RED);
+        DrawText("wheel: zoom   right-drag: move   R: airfoil   F: far field", F(20), static_cast<int>(bottom - S(30)), F(10), GRAY);
         EndDrawing();
     }
 
