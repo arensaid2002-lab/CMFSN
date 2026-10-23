@@ -18,13 +18,14 @@ namespace Mesh
         
         
         public:
+        
+        
         MeshHandler() = default;
         ~MeshHandler() = default;
         
         MeshData_Euler& get_Mesh_Euler();
 
         private:
-
         MeshData_Euler Mesh_Euler;
 
     };

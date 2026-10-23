@@ -12,4 +12,8 @@ namespace Mesh
 
         Kokkos::View<float* > X, Y;
     };
+    struct MeshData_VLM
+    {
+        
+    };
 }

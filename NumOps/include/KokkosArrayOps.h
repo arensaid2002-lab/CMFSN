@@ -7,7 +7,6 @@ namespace NumOps
 {
 
     #pragma region Array_Operations
-
     template <typename T, size_t N>   
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator+(const Kokkos::Array<T, N>& A,const Kokkos::Array<T, N>& B) 

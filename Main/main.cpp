@@ -17,11 +17,10 @@ int main(int argc, char* argv[])
     string path = "../../../../NACA_0012_mesh_PLOT3D_format/x.1";
   
     IO::Import_Mesh(path, MeshData, MeshHandler::MeshFileFormat::Plot3D);
-    
+
     for (int i = 0; i < MeshData.N_nodes; i++)
     {
         cout << MeshData.X(i)  << endl;
     }
-
     return 0;
 }
