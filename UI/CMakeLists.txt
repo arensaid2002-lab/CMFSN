@@ -31,5 +31,3 @@ target_link_libraries(naca_viewer PRIVATE nacawing_core raylib)
 add_executable(mesh_viewer src/mesh_viewer.cpp)
 target_include_directories(mesh_viewer SYSTEM PRIVATE ${raygui_SOURCE_DIR}/src)   # raygui: the buttons
 target_link_libraries(mesh_viewer PRIVATE mesh_core raylib)
-# Where the reference grids x.9 ... x.5 (Vassberg-Jameson PLOT3D files) live, baked into the program.
-target_compile_definitions(mesh_viewer PRIVATE REF_DIR="${CMAKE_SOURCE_DIR}/tests/data")

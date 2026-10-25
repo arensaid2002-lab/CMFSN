@@ -22,3 +22,7 @@ add_test(NAME plot3d COMMAND test_plot3d ${CMAKE_CURRENT_SOURCE_DIR}/data/x.9)
 add_executable(test_ogrid test_ogrid.cpp)
 target_link_libraries(test_ogrid PRIVATE mesh_core)
 add_test(NAME ogrid COMMAND test_ogrid ${CMAKE_CURRENT_SOURCE_DIR}/data/x.9)
+
+add_executable(test_ogrid_wall test_ogrid_wall.cpp)
+target_link_libraries(test_ogrid_wall PRIVATE mesh_core)
+add_test(NAME ogrid_wall COMMAND test_ogrid_wall)

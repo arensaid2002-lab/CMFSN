@@ -1,20 +1,22 @@
 // Mesh viewer (written with Claude): draws the O-grid from mesh::generateOGrid,
-// and on top of it the reference grid of the same size (tests/data/x.9 ... x.5, NACA 0012 only).
-//   buttons            Computed / Reference: show or hide each grid
-//                      8 ... 128: number of cells nc (regenerates the grid, loads x.9 ... x.5)
+// and on top of it the exact NACA airfoil from the CAD equations, so you can see the wall sits on it.
+// A panel shows whether the mesh is valid: flipped cells (filled in red), wall deviation, seam gap.
+//   buttons            Computed / Profil NACA: show or hide the grid and the exact airfoil
+//                      8 ... 128: number of cells nc (regenerates the grid)
 //                      NACA M P TT: the airfoil digits, with - / + or click the number to type it
 //   mouse wheel        zoom toward the mouse
 //   right-click drag   move the view
 //   R                  back to the airfoil view
 //   F                  show the whole grid, out to the far field
 
+#include <algorithm>
 #include <cmath>
-#include <string>
+#include <vector>
 #include "raylib.h"
 #define RAYGUI_IMPLEMENTATION               // raygui is a single header: this line puts its code in this file
 #include "raygui.h"
 #include "OGrid.h"
-#include "Plot3D.h"
+#include "nacawing/NACA.hpp"
 
 int main()
 {
@@ -24,16 +26,20 @@ int main()
     SetTargetFPS(60);
     int screenW = GetScreenWidth(), screenH = GetScreenHeight();   // last known size, to measure a resize
 
-    int digitM = 0, digitP = 0, digitTT = 12;   // NACA 0012, the airfoil of the reference grids
+    int digitM = 0, digitP = 0, digitTT = 12;   // start with NACA 0012
     int m = digitM, p = digitP, tt = digitTT;   // what the spinners show: can be invalid for a moment (2012 on the way to 2412)
 
-    // Reference file x.(9 - level) has nc = 8 * 2^level cells: x.9 -> 8, x.8 -> 16, ... x.5 -> 128.
-    const int levels[] = {8, 16, 32, 64, 128};
+    const int levels[] = {8, 16, 32, 64, 128};  // the nc choices, one per button
     int level = 3;                          // start at nc = 64
     int nc = 0;
     mesh::StructuredMesh2D grid;            // computed by generateOGrid
-    mesh::StructuredMesh2D reference;       // read from the PLOT3D file
-    std::string referenceFile;
+    std::vector<Vector2> airfoil;           // exact NACA curve, TE -> lower -> LE -> upper -> TE, screen y = -y
+
+    // Mesh validity, recomputed by load()
+    struct Cell { int i, j; };
+    std::vector<Cell> badCells;             // cells whose signed area is zero or has the minority sign (flipped)
+    double wallError = 0.0;                 // max | |y| - y_t(x) | on the wall j = 0 (symmetric airfoils only)
+    double seamGap = 0.0;                   // max distance between at(0, j) and at(nc, j): the two sides of the seam
 
     // Camera2D: we draw in chord units and the camera turns them into pixels.
     // offset = the screen pixel where target sits, zoom = pixels per chord.
@@ -47,9 +53,52 @@ int main()
     // Rebuilds everything that depends on the airfoil or on nc.
     auto load = [&]() {
         nc = levels[level];
-        grid = mesh::generateOGrid(nacawing::fromDigits(digitM, digitP, digitTT), nc);
-        referenceFile = "x." + std::to_string(9 - level);
-        reference = mesh::readPlot3D(std::string(REF_DIR) + "/" + referenceFile);  // empty if the file is missing
+        nacawing::NacaParams naca = nacawing::fromDigits(digitM, digitP, digitTT);
+        grid = mesh::generateOGrid(naca, nc);
+
+        // Exact airfoil from the CAD equations, out to the trailing edge of the grid (x_TE = 1.00893...,
+        // where y_t = 0): node (0, 0) is the trailing edge, so we take x_TE from there, no second copy.
+        const double xTE = grid.at(0, 0).x;
+        const int n = 400;
+        std::vector<nacawing::Point2D> up = nacawing::upperSurface(naca.m, naca.p, naca.t, n, xTE);
+        std::vector<nacawing::Point2D> lo = nacawing::lowerSurface(naca.m, naca.p, naca.t, n, xTE);
+        airfoil.clear();
+        for (int k = n - 1; k >= 0; --k) airfoil.push_back({static_cast<float>(lo[k].x), static_cast<float>(-lo[k].y)});
+        for (int k = 1; k < n; ++k)      airfoil.push_back({static_cast<float>(up[k].x), static_cast<float>(-up[k].y)});
+
+        // Validity 1: signed area of each cell, half the cross product of its diagonals (same as test_ogrid).
+        // In a valid grid every cell has the same sign; a cell with the other sign (or zero) is flipped.
+        std::vector<double> area;
+        int positives = 0;
+        for (int j = 0; j + 1 < grid.nj; ++j)
+            for (int i = 0; i + 1 < grid.ni; ++i) {
+                const auto& a = grid.at(i, j);
+                const auto& b = grid.at(i + 1, j);
+                const auto& c = grid.at(i + 1, j + 1);
+                const auto& d = grid.at(i, j + 1);
+                area.push_back(0.5 * ((c.x - a.x) * (d.y - b.y) - (d.x - b.x) * (c.y - a.y)));
+                if (area.back() > 0) positives++;
+            }
+        double sign = (2 * positives >= static_cast<int>(area.size())) ? 1.0 : -1.0;   // the majority sign
+        badCells.clear();
+        for (int j = 0; j + 1 < grid.nj; ++j)
+            for (int i = 0; i + 1 < grid.ni; ++i)
+                if (sign * area[i + j * (grid.ni - 1)] <= 0.0) badCells.push_back({i, j});
+
+        // Validity 2: the wall is the airfoil, |y| = y_t(x). Leading edge (i = nc/2) skipped: sqrt(x) is
+        // vertical at x = 0, so 1e-17 of rounding on x gives 1e-9 on y_t. x clamped to [0, x_TE] (sqrt(<0) = NaN).
+        wallError = 0.0;
+        for (int i = 0; i < grid.ni; ++i) {
+            if (i == nc / 2) continue;
+            const auto& w = grid.at(i, 0);
+            double x = std::clamp(w.x, 0.0, xTE);
+            wallError = std::max(wallError, std::abs(std::abs(w.y) - nacawing::y_t(naca.t, x)));
+        }
+
+        // Validity 3: the seam, the first and last spokes (i = 0 and i = nc) must be the same points.
+        seamGap = 0.0;
+        for (int j = 0; j < grid.nj; ++j)
+            seamGap = std::max(seamGap, std::hypot(grid.at(0, j).x - grid.at(nc, j).x, grid.at(0, j).y - grid.at(nc, j).y));
 
         // the far field is ~150 chords away (more for thick or cambered airfoils): fit its radius in the window
         nacawing::Point2D far = grid.at(0, grid.nj - 1);
@@ -59,7 +108,7 @@ int main()
     load();
 
     bool showComputed = true;
-    bool showReference = true;
+    bool showAirfoil = true;
     bool editM = false, editP = false, editTT = false;   // true while typing in that number box
 
     Camera2D cam = airfoilView;
@@ -124,22 +173,30 @@ int main()
         if (!typing && IsKeyPressed(KEY_F)) cam = farView;
 
         float px = 1.0f / cam.zoom;         // one pixel, in chord units, so lines stay 1 px at any zoom
-        bool is0012 = (digitM == 0 && digitP == 0 && digitTT == 12);   // the only airfoil with reference grids
 
         BeginDrawing();
         ClearBackground(RAYWHITE);
         BeginMode2D(cam);
 
-        if (showReference && is0012 && !reference.nodes.empty())
-            drawGrid(reference, ORANGE, Fade(ORANGE, 0.5f), MAROON, 2.0f * px);   // under, and wider, so both stay visible
-        if (showComputed)
+        if (showComputed) {
+            // flipped cells filled in red, under the lines. Both triangle orders are drawn because raylib
+            // only fills counter-clockwise triangles, and a flipped cell turns the other way.
+            for (const Cell& c : badCells) {
+                auto v = [&](int i, int j) { return Vector2{static_cast<float>(grid.at(i, j).x), static_cast<float>(-grid.at(i, j).y)}; };
+                Vector2 a = v(c.i, c.j), b = v(c.i + 1, c.j), cc = v(c.i + 1, c.j + 1), d = v(c.i, c.j + 1);
+                DrawTriangle(a, b, cc, Fade(RED, 0.5f)); DrawTriangle(a, cc, b, Fade(RED, 0.5f));
+                DrawTriangle(a, cc, d, Fade(RED, 0.5f)); DrawTriangle(a, d, cc, Fade(RED, 0.5f));
+            }
             drawGrid(grid, BLUE, SKYBLUE, RED, px);
+        }
+        if (showAirfoil)                    // exact airfoil on top, thinner than the wall, so the wall shows around it
+            DrawLineStrip(airfoil.data(), static_cast<int>(airfoil.size()), DARKGREEN);
 
         EndMode2D();
 
         // Buttons are drawn after EndMode2D, in screen pixels. They return their new state through the pointer.
         GuiToggle(Rectangle{right - S(230), S(15), S(104), S(24)}, "Computed", &showComputed);
-        GuiToggle(Rectangle{right - S(124), S(15), S(104), S(24)}, "Reference", &showReference);
+        GuiToggle(Rectangle{right - S(124), S(15), S(104), S(24)}, "Profil NACA", &showAirfoil);
 
         int clicked = level;
         GuiToggleGroup(Rectangle{right - S(230), S(45), S(40), S(24)}, "8;16;32;64;128", &clicked);   // one item per level, side by side
@@ -162,15 +219,19 @@ int main()
         }
 
         DrawText(TextFormat("O-grid NACA %i%i%02i, nc = %i", digitM, digitP, digitTT, nc), F(20), F(20), F(20), DARKGRAY);
-        DrawText("computed", F(20), F(48), F(10), BLUE);
-        if (!is0012)
-            DrawText("reference grids exist for NACA 0012 only", F(80), F(48), F(10), GRAY);
-        else if (reference.nodes.empty())
-            DrawText(TextFormat("reference %s not found in %s", referenceFile.c_str(), REF_DIR), F(80), F(48), F(10), RED);
-        else
-            DrawText(TextFormat("reference %s", referenceFile.c_str()), F(80), F(48), F(10), ORANGE);
+        DrawText("maillage", F(20), F(48), F(10), BLUE);
+        DrawText("profil NACA exact", F(80), F(48), F(10), DARKGREEN);
         if (!valid)
             DrawText(TextFormat("NACA %i%i%02i: M and P must be both 0 or both > 0", m, p, tt), F(20), F(64), F(10), RED);
+
+        // Validity panel: green when fine, red when not
+        int bad = static_cast<int>(badCells.size());
+        DrawText(TextFormat("cellules retournees : %i / %i", bad, nc * nc), F(20), F(84), F(10), bad == 0 ? DARKGREEN : RED);
+        if (digitM == 0)
+            DrawText(TextFormat("ecart paroi / NACA : %.1e", wallError), F(20), F(98), F(10), wallError < 1e-9 ? DARKGREEN : RED);
+        else
+            DrawText("ecart paroi / NACA : symetrique seulement", F(20), F(98), F(10), GRAY);
+        DrawText(TextFormat("couture i=0 / i=nc : %.1e", seamGap), F(20), F(112), F(10), seamGap < 1e-9 ? DARKGREEN : RED);
         DrawText("wheel: zoom   right-drag: move   R: airfoil   F: far field", F(20), static_cast<int>(bottom - S(30)), F(10), GRAY);
         EndDrawing();
     }
