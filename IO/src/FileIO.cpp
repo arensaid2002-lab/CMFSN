@@ -18,7 +18,7 @@ namespace IO
             {
                 Meshfile >> Mesh_Euler.Ni >> Mesh_Euler.Nj;
                 Mesh_Euler.N_nodes = Mesh_Euler.Ni * Mesh_Euler.Nj;
-                
+                Me
  
                 Mesh_Euler.X = Kokkos::View<float* >("X", Mesh_Euler.N_nodes);
                 Mesh_Euler.Y = Kokkos::View<float* >("X", Mesh_Euler.N_nodes);

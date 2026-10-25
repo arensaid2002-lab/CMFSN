@@ -2,16 +2,20 @@
 #include <Eigen/Dense>
 #include <iostream>
 #include <MeshFormat.h>
-#include <SolverEuler/Cell_Euler.h>
+#include <SolverEuler/Cells_Euler.h>
+
 using namespace std;
 using namespace Mesh;
 namespace Solver
 {
 
-        Cell_Euler::Cell_Euler(int i, int j, MeshData_Euler& MeshData)
+        Cells_Euler::Cells_Euler(int i, int j, MeshData_Euler& MeshData)
         {
-                Mesh_Ni = MeshData.Ni;
-                Mesh_Nj = MeshData.Nj;
+                Ni = MeshData.Ni;
+                Nj = MeshData.Nj;
+                N_nodes = MeshData.N_nodes;
+                N_Cells = (Ni - 1) * (Nj - 1);
+
                 eval_Normals(i, j, MeshData);
                 init_State();
         }
@@ -19,9 +23,12 @@ namespace Solver
 
 
         KOKKOS_INLINE_FUNCTION
-        void Cell_Euler::eval_normals(int i, int j)
+        void Cells_Euler::eval_Cell_normals(int i, int j)
         {
-            int Position_index = i + j*Mesh_Ni;
+            int Index = get_Cell_index(int i, int j)
+            {
+
+            }
             
 
             for(int direction = 0; direction < 4; direction++ )

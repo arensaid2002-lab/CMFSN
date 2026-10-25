@@ -8,7 +8,7 @@ namespace Mesh
 {
     struct MeshData_Euler
     {
-        int Ni{}, Nj{}, N_nodes{}, N_edge{4};
+        int Ni{}, Nj{}, N_nodes{}, N_edge{4}, Mesh_N_Cells{};
 
         Kokkos::View<float* > X, Y;
     };
