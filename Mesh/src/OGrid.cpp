@@ -34,6 +34,8 @@ namespace mesh {
 
     StructuredMesh2D generateOGrid(const nacawing::NacaParams& naca, int nc)
     {
+        // ERROR IF NC IS NOT EVEN
+        // ERROR IF NOT A SYMETRIC NACA, we will have diffrent mesh generation anyways
         StructuredMesh2D mesh;
         double x_TE = 1.0089304115;                                     // trailing edge x coordinate constante for NACA 4 digits airfoils
         double delta = 2.0 * std::atan(std::abs(nacawing::dy_t(naca.t, x_TE)));     //  trailing-edge included angle
@@ -171,9 +173,25 @@ namespace mesh {
                 double r_ij = (r_i0 * (R[nc] - R[0]) + R[nc] * (R[j] - R[0])) / (R[nc] - R[0]);  // radial coordinate ; eq.14 - r_ij avec l'éq. 14, en utilisant R[0], R[j], R[nc]
                 std::complex<double> zeta = zeta_c + r_ij * std::polar(1.0, theta_i);
                 std::complex<double> z = fromCircle(zeta);
+                
+
                 mesh.at(i, j) = {z.real(), z.imag()};
             }
         }
+
+        // 7. Vassberg & Jameson eqs. 15-16: force exact up/down symmetry (NACA 00xx only).
+        //    Averages each node k with its mirror nc-k on every ring to remove rounding asymmetry.
+        if (naca.m == 0.0) {
+        for (int j = 0; j <= nc; ++j) {
+                for (int k = 0; k <= nc/2; ++k) {
+                    nacawing::Point2D& a = mesh.at(k, j);   // lower node
+                    nacawing::Point2D& b = mesh.at(nc-k, j);   // its twin, NC-i
+                    nacawing::Point2D hat_z = {0.5 * ( a.x + b.x), 0.5 * ( -a.y + b.y)};
+                    mesh.at(k, j) = {hat_z.x, -hat_z.y};
+                    mesh.at(nc-k, j) = {hat_z.x, hat_z.y};
+                    }
+                } 
+            }
 
         return mesh;    
         }
