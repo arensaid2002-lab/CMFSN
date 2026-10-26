@@ -13,6 +13,10 @@ add_executable(test_naca_equation test_naca_equation.cpp)
 target_link_libraries(test_naca_equation PRIVATE nacawing_core)
 add_test(NAME naca_equation COMMAND test_naca_equation)
 
+add_executable(test_wing test_wing.cpp)
+target_link_libraries(test_wing PRIVATE nacawing_core)
+add_test(NAME wing COMMAND test_wing)
+
 # --- Mesh ---
 # The mesh file path is passed as an argument (argv[1]) to the test program.
 add_executable(test_plot3d test_plot3d.cpp)
