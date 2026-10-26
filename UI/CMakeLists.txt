@@ -27,6 +27,11 @@ add_executable(naca_viewer src/naca_viewer.cpp)
 target_include_directories(naca_viewer SYSTEM PRIVATE ${raygui_SOURCE_DIR}/src)
 target_link_libraries(naca_viewer PRIVATE nacawing_core raylib)
 
+# Wing viewer: the 3D wing from wingSurface(), so it needs CAD only.
+add_executable(wing_viewer src/wing_viewer.cpp)
+target_include_directories(wing_viewer SYSTEM PRIVATE ${raygui_SOURCE_DIR}/src)   # raygui: the sliders and spinners
+target_link_libraries(wing_viewer PRIVATE nacawing_core raylib)
+
 # Mesh viewer: the O-grid, so it needs Mesh (which brings CAD with it).
 add_executable(mesh_viewer src/mesh_viewer.cpp)
 target_include_directories(mesh_viewer SYSTEM PRIVATE ${raygui_SOURCE_DIR}/src)   # raygui: the buttons
