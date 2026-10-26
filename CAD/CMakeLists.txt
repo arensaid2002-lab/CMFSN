@@ -24,6 +24,7 @@ add_library(nacawing_core
     src/version.cpp
     src/NACA.cpp
     src/NACASurface.cpp
+    src/3Dwing.cpp
 )
 
 target_include_directories(nacawing_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
