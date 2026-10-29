@@ -9,74 +9,75 @@ using namespace Mesh;
 namespace Solver
 {
 
-        Cells_Euler::Cells_Euler(int i, int j, MeshData_Euler& MeshData)
+        Cells_Euler::Cells_Euler(const MeshData_Euler& Mesh_Euler): MeshData(Mesh_Euler)
         {
-                Ni = MeshData.Ni;
-                Nj = MeshData.Nj;
-                N_nodes = MeshData.N_nodes;
-                N_Cells = (Ni - 1) * (Nj - 1);
+                Normals = Kokkos::View<float***, Kokkos::LayoutLeft >("Normals", MeshData.N_Cells, 4, 2);
+                Cell_Areas = Kokkos::View<float*, Kokkos::LayoutLeft >("Cell_Areas", MeshData.N_Cells);
 
-                eval_Normals(i, j, MeshData);
+                rho_old = Kokkos::View<float*, Kokkos::LayoutLeft >("rho_old", MeshData.N_Cells);
+                Momentum_x_old = Kokkos::View<float*, Kokkos::LayoutLeft >("Momentum_x_old", MeshData.N_Cells);
+                Momentum_y_old = Kokkos::View<float*, Kokkos::LayoutLeft >("Momentum_y_old", MeshData.N_Cells);
+                E_old = Kokkos::View<float*, Kokkos::LayoutLeft >("E_old", MeshData.N_Cells);
+
+                rho_new = Kokkos::View<float*, Kokkos::LayoutLeft >("rho_new", MeshData.N_Cells);
+                Momentum_x_new = Kokkos::View<float*, Kokkos::LayoutLeft >("Momentum_x_new", MeshData.N_Cells);
+                Momentum_y_new = Kokkos::View<float*, Kokkos::LayoutLeft >("Momentum_y_new", MeshData.N_Cells);
+                E_new = Kokkos::View<float*, Kokkos::LayoutLeft >("E_new", MeshData.N_Cells);
+
+                Flux_mass = Kokkos::View<float**, Kokkos::LayoutLeft >("Flux_mass", MeshData.N_Cells, 4);
+                Flux_Momentum_x = Kokkos::View<float**, Kokkos::LayoutLeft >("Flux_Momentum_x", MeshData.N_Cells, 4);
+                Flux_Momentum_y = Kokkos::View<float**, Kokkos::LayoutLeft >("Flux_Momentum_y", MeshData.N_Cells, 4);
+                Flux_E = Kokkos::View<float**, Kokkos::LayoutLeft >("Flux_E", MeshData.N_Cells, 4);
+                D = Kokkos::View<float**, Kokkos::LayoutLeft >("D", MeshData.N_Cells, 4);
+                
+                Kokkos::parallel_for("eval_Cell_Areas_And_Normals", Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, MeshData.N_Cells), KOKKOS_LAMBDA(const int Cell_k)
+                {
+                    int i = Cell_k % (MeshData.Ni-1);
+                    int j = Cell_k / (MeshData.Ni-1);
+                    Cell_Areas(Cell_k) = eval_Cell_Area(i, j);
+                    for(int direction = 0; direction < 4; direction++)
+                    {
+                        Normals(Cell_k, direction, 0) = Cells_Euler::eval_Cell_Normal(i, j, direction).first;
+                        Normals(Cell_k, direction, 1) = Cells_Euler::eval_Cell_Normal(i, j, direction).second;
+                    }
+                });
                 init_State();
         }
 
 
 
         KOKKOS_INLINE_FUNCTION
-        void Cells_Euler::eval_Cell_normals(int i, int j)
+        std::pair<float, float> Cells_Euler::eval_Cell_Normal(int i, int j, int direction)
         {
-            int Index = get_Cell_index(int i, int j)
+            float delta_x, delta_y;
+            int CellIndex = Cell_index(i, j);
+            int NodeIndex = Node_index(i, j);
+                        
+            switch (direction)
             {
+                case 0: // Bottom
+                    delta_x = MeshData.X(Node_index(i + 1,j)) - MeshData.X(Node_index(i,j));
+                    delta_y = MeshData.Y(Node_index(i + 1,j)) - MeshData.Y(Node_index(i,j));
 
-            }
-            
-
-            for(int direction = 0; direction < 4; direction++ )
-            {
-                switch (direction)
-                {
-                case 0:
-                    Normals.col(direction)[0] = MeshData.X[Position_index + 1] - 
                     break;
                 
-                default:
+                case 1: // Right
+                    delta_x = MeshData.X(Node_index(i+1,j + 1)) - MeshData.X(Node_index(i+1,j));
+                    delta_y = MeshData.Y(Node_index(i+1,j + 1)) - MeshData.Y(Node_index(i+1,j));
+                    
                     break;
-                }
-                Normals.col()
+                case 2: // Top
+                    delta_x = MeshData.X(Node_index(i,j + 1)) - MeshData.X(Node_index(i + 1,j + 1));
+                    delta_y = MeshData.Y(Node_index(i,j + 1)) - MeshData.Y(Node_index(i + 1,j + 1));
+                    
+                    break;
+                case 3: // Left
+                    delta_x = MeshData.X(Node_index(i,j)) - MeshData.X(Node_index(i,j + 1));
+                    delta_y = MeshData.Y(Node_index(i,j)) - MeshData.Y(Node_index(i,j + 1));
+                    
+                    break;
             }
-
+            return {delta_y, - delta_x};
         }
-
-
-        KOKKOS_INLINE_FUNCTION
-        float& Cell_Euler::rho() {return W[0];}
-
-        KOKKOS_INLINE_FUNCTION
-        float& Momentum_x() {return W[1];}
-
-        KOKKOS_INLINE_FUNCTION
-        float& Momentum_y() {return W[2];}
-
-        KOKKOS_INLINE_FUNCTION
-        float& E() {return W[3];}
-
-        KOKKOS_INLINE_FUNCTION
-        auto& Flux_rho(direction d) {return F_c.col(static_cast<Eigen::Index>(d))[0];}
-
-        KOKKOS_INLINE_FUNCTION
-        auto& Flux_Momentum_x(direction d) {return F_c.col(static_cast<Eigen::Index>(d))[1];}
-
-        KOKKOS_INLINE_FUNCTION
-        auto& Flux_Momentum_y(direction d) {return F_c.col(static_cast<Eigen::Index>(d))[2];}
-
-        KOKKOS_INLINE_FUNCTION
-        auto& Flux_E(direction d) {return F_c.col(static_cast<Eigen::Index>(d))[3];}
-
-        KOKKOS_INLINE_FUNCTION
-        int get_Position_index(int i, int j)
-        {
-            return Position_index = i + j*MeshData.Ni;
-        }
-
 
 }

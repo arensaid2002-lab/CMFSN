@@ -18,17 +18,17 @@ namespace IO
             {
                 Meshfile >> Mesh_Euler.Ni >> Mesh_Euler.Nj;
                 Mesh_Euler.N_nodes = Mesh_Euler.Ni * Mesh_Euler.Nj;
-                Me
+                Mesh_Euler.N_Cells = (Mesh_Euler.Ni-1) * (Mesh_Euler.Nj-1);
  
-                Mesh_Euler.X = Kokkos::View<float* >("X", Mesh_Euler.N_nodes);
-                Mesh_Euler.Y = Kokkos::View<float* >("X", Mesh_Euler.N_nodes);
+                Kokkos::View<float*, Kokkos::LayoutLeft > X("X", Mesh_Euler.N_nodes);
+                Kokkos::View<float*, Kokkos::LayoutLeft > Y("X", Mesh_Euler.N_nodes);
 
-                auto X_host = Kokkos::create_mirror_view(Mesh_Euler.X);
-                auto Y_host = Kokkos::create_mirror_view(Mesh_Euler.Y);
+                auto X_host = Kokkos::create_mirror_view(X);
+                auto Y_host = Kokkos::create_mirror_view(Y);
 
                 for(int i = 0; i < Mesh_Euler.N_nodes; i++)
                 {
-                    if(!(Meshfile >> Mesh_Euler.X(i)))
+                    if(!(Meshfile >> X(i)))
                     {
                         throw runtime_error("X Coordinate reading failed");
                     }
@@ -36,13 +36,16 @@ namespace IO
 
                 for(int i = 0; i < Mesh_Euler.N_nodes; i++)
                 {
-                    if(!(Meshfile >> Mesh_Euler.Y(i)))
+                    if(!(Meshfile >> Y(i)))
                     {
                         throw runtime_error("Y Coordinate reading failed");
                     }
                 }
-                Kokkos::deep_copy(Mesh_Euler.X, X_host);
-                Kokkos::deep_copy(Mesh_Euler.Y, Y_host);
+                Kokkos::deep_copy(X, X_host);
+                Kokkos::deep_copy(Y, Y_host);
+
+                Mesh_Euler.X = X;
+                Mesh_Euler.Y = Y; 
             }
             else
             {

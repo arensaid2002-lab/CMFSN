@@ -4,6 +4,18 @@ project(CMFSN VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(Kokkos_ENABLE_CUDA)
+    enable_language(CUDA)
+
+    set(CMAKE_CUDA_STANDARD 20)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+    set(
+        Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE
+        ON CACHE BOOL "" FORCE
+    )
+endif()
 ##===========Dependencies===========##
 
 find_package(Eigen3 CONFIG QUIET)
@@ -53,11 +65,10 @@ add_subdirectory(Solver)
 add_subdirectory(NumOps)
 add_subdirectory(UI)
 
-
 ##===========Executable===========##
 add_executable(CMFSN Main/main.cpp)
 
-target_link_libraries(CMFSN PRIVATE IO Mesh NumOps)
+target_link_libraries(CMFSN PRIVATE IO Mesh NumOps Solver)
 ##===========Tests===========##
 include(CTest)
 enable_testing()
