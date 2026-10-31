@@ -23,4 +23,6 @@ int main(int argc, char* argv[])
         cout << MeshData.X(i)  << endl;
     }
     return 0;
+
+    Cells_Euler cells_Euler(MeshData);
 }

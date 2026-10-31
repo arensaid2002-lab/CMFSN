@@ -28,7 +28,7 @@ namespace IO
 
                 for(int i = 0; i < Mesh_Euler.N_nodes; i++)
                 {
-                    if(!(Meshfile >> X(i)))
+                    if(!(Meshfile >> X_host(i)))
                     {
                         throw runtime_error("X Coordinate reading failed");
                     }
@@ -36,7 +36,7 @@ namespace IO
 
                 for(int i = 0; i < Mesh_Euler.N_nodes; i++)
                 {
-                    if(!(Meshfile >> Y(i)))
+                    if(!(Meshfile >> Y_host(i)))
                     {
                         throw runtime_error("Y Coordinate reading failed");
                     }

@@ -68,6 +68,13 @@ add_subdirectory(UI)
 ##===========Executable===========##
 add_executable(CMFSN Main/main.cpp)
 
+if(Kokkos_ENABLE_CUDA)
+    set_source_files_properties(
+        Main/main.cpp
+        PROPERTIES LANGUAGE CUDA
+    )
+endif()
+
 target_link_libraries(CMFSN PRIVATE IO Mesh NumOps Solver)
 ##===========Tests===========##
 include(CTest)
