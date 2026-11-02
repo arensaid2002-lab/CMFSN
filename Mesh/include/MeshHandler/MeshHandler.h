@@ -7,6 +7,7 @@
 using namespace std;
 namespace Mesh
 {
+    template <typename T = float>
     class MeshHandler
     {
         public:
@@ -23,10 +24,11 @@ namespace Mesh
         MeshHandler() = default;
         ~MeshHandler() = default;
         
-        MeshData_Euler& get_Mesh_Euler();
+        MeshData_Euler<T>& get_Mesh_Euler();
 
         private:
-        MeshData_Euler Mesh_Euler;
+        MeshData_Euler<T> Mesh_Euler;
 
     };
 }
+#include "MeshHandler.tpp"

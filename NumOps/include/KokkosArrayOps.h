@@ -172,6 +172,7 @@ namespace NumOps
     }
     #pragma endregion
 
+    #pragma region ArrayOps
     template <typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION

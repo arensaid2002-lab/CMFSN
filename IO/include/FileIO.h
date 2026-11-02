@@ -1,3 +1,5 @@
+#pragma once
+
 #include <iostream>
 #include <MeshHandler.h>
 
@@ -5,5 +7,7 @@ using namespace std;
 using namespace Mesh;
 namespace IO
 {
-    void Import_Mesh(string path, MeshData_Euler& Mesh_Euler, MeshHandler::MeshFileFormat Format);
+    template <typename T>
+    void Import_Mesh(string path, MeshData_Euler<T>& Mesh_Euler, typename MeshHandler<T>::MeshFileFormat Format);
 }
+#include "FileIO.tpp"

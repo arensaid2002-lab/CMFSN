@@ -1,20 +1,22 @@
-#include "Cells_Euler.h"
+#pragma once
 
+#include "CellsEuler/CellsEuler.h"
 
+using namespace Mesh;
 namespace Solver
 {
+    template <typename T = float>
     class SolverEuler 
     {
         public:
-			SolverEuler(const Mesh::MeshData_Euler& Mesh_Euler);
+            SolverEuler(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Euler<T>& Mesh_Euler);
 
-			void initialize_SolverEuler()
-			{
-				// Initialize any additional data or parameters specific to the Euler solver here
-			}
+            void init_cells();
 
         private:
-            Cells_Euler<> cells_euler;
+            Cells_Euler<Kokkos::DefaultExecutionSpace, T> cells_euler;
 
+			T rho_inf_{1.0f}, P_inf_{1.0f}, gamma_, Mach_inf_, velocity_u_inf, velocity_v_inf, alpha_;
     };
 }
+#include "SolverEuler.tpp"
