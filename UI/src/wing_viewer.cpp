@@ -21,28 +21,29 @@ Vector3 toVec(const nacawing::Point3D& q, float sign)
     return Vector3{static_cast<float>(q.x), static_cast<float>(q.y), sign * static_cast<float>(q.z)};
 }
 
-// Draws one half wing: wing[j][i] = station j, point i of the loop (see wingSurface).
+// Draws one half wing: wing[i][j] = point i of the loop at station j (see wingSurface).
 // sign = +1 for the right half, -1 for its mirror image (the left half).
 void drawHalfWing(const std::vector<std::vector<nacawing::Point3D>>& wing, float sign)
 {
-    const size_t N = wing[0].size();        // points per section, 2n - 1 (same for every section)
+    const size_t N = wing.size();           // points per section (loop), 2n - 1
+    const size_t Ns = wing[0].size();       // stations along the span (same for every loop point)
     const size_t le = (N - 1) / 2;          // the leading edge is the middle point of the loop (Selig order)
 
-    // Spanwise lines: point i of section j joined to point i of section j + 1.
+    // Spanwise lines: point i of station j joined to point i of station j + 1.
     // Every 4 neighbours (i, j), (i+1, j), (i+1, j+1), (i, j+1) make one quad of the surface mesh.
-    for (size_t j = 0; j + 1 < wing.size(); ++j) {
+    for (size_t j = 0; j + 1 < Ns; ++j) {
         for (size_t i = 0; i < N; ++i) {
             bool edge = (i == 0 || i == le || i == N - 1);   // trailing edge (upper and lower) and leading edge
-            DrawLine3D(toVec(wing[j][i], sign), toVec(wing[j + 1][i], sign), edge ? DARKGRAY : LIGHTGRAY);
+            DrawLine3D(toVec(wing[i][j], sign), toVec(wing[i][j + 1], sign), edge ? DARKGRAY : LIGHTGRAY);
         }
     }
 
     // Sections: each one is a loop TE -> upper -> LE -> lower -> TE, drawn point to point.
-    for (size_t j = 0; j < wing.size(); ++j) {
+    for (size_t j = 0; j < Ns; ++j) {
         Color c = (j == 0) ? RED : BLUE;    // root section in red, the others in blue
         for (size_t i = 0; i + 1 < N; ++i)
-            DrawLine3D(toVec(wing[j][i], sign), toVec(wing[j][i + 1], sign), c);
-        DrawLine3D(toVec(wing[j][N - 1], sign), toVec(wing[j][0], sign), GREEN);   // close the (slightly open) trailing edge
+            DrawLine3D(toVec(wing[i][j], sign), toVec(wing[i + 1][j], sign), c);
+        DrawLine3D(toVec(wing[N - 1][j], sign), toVec(wing[0][j], sign), GREEN);   // close the (slightly open) trailing edge
     }
 }
 
@@ -61,7 +62,7 @@ int main()
     nacawing::NacaParams airfoil = nacawing::fromDigits(digitM, digitP, digitTT);
 
     // Wing: starts as the doc's example wing (b = 8 m, c_r = 1 m, c_t = 0.5 m, 20 deg sweep, -4 deg twist).
-    // raygui sliders work with float, so the inputs are floats here and become doubles in NacaWingParams.
+    // raygui sliders work with float, so the inputs are floats here and become doubles in WingParams.
     float span = 8.0f;          // [m]   b, full tip-to-tip span
     float rootChord = 1.0f;     // [m]   c_r
     float tipChord = 0.5f;      // [m]   c_t
@@ -93,7 +94,7 @@ int main()
 
         // 1. Geometry. Rebuilt every frame: it is only Ns x (2n - 1) points, so it is cheap,
         //    and it means every slider change shows up at once without extra bookkeeping.
-        nacawing::NacaWingParams w{.b = span, .c_r = rootChord, .c_t = tipChord,
+        nacawing::WingParams w{.b = span, .c_r = rootChord, .c_t = tipChord,
                                    .sweepLE = sweep, .twistTip = twist, .dihedral = dihedral};
         int Ns = static_cast<int>(std::lround(stations));
         std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(airfoil.m, airfoil.p, airfoil.t, n);
@@ -112,7 +113,7 @@ int main()
 
         // Look at the middle of the half wing (or of the whole wing when mirrored).
         float midZ = mirror ? 0.0f : 0.25f * span;
-        float midX = 0.5f * static_cast<float>(wing.back()[0].x);   // halfway between the root LE (x = 0) and the tip TE
+        float midX = 0.5f * static_cast<float>(wing[0].back().x);   // halfway between the root LE (x = 0) and the tip TE
         camera.target = Vector3{midX, 0.0f, midZ};
         camera.position = Vector3{camera.target.x + distance * std::cos(pitch) * std::sin(yaw),
                                   camera.target.y + distance * std::sin(pitch),

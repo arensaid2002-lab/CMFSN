@@ -28,7 +28,7 @@ int main()
     int failures = 0;
 
     // Angles are not used by these functions yet, so they are set to 0.
-    nacawing::NacaWingParams w{.b = 8.0, .c_r = 1.0, .c_t = 0.5,
+    nacawing::WingParams w{.b = 8.0, .c_r = 1.0, .c_t = 0.5,
                                .sweepLE = 0.0, .twistTip = 0.0, .dihedral = 0.0};
 
     // lambda = c_t / c_r = 0.5 / 1 = 0.5
@@ -49,7 +49,7 @@ int main()
     failures += check("meanAeroChord", nacawing::meanAeroChord(w), (2.0 / 3.0) * 1.75 / 1.5);
 
     // Rectangular wing (lambda = 1): the chord must be the same everywhere.
-    nacawing::NacaWingParams rect{.b = 6.0, .c_r = 1.0, .c_t = 1.0,
+    nacawing::WingParams rect{.b = 6.0, .c_r = 1.0, .c_t = 1.0,
                                   .sweepLE = 0.0, .twistTip = 0.0, .dihedral = 0.0};
     failures += check("rectangular chordAt tip", nacawing::chordAt(rect, 3.0), 1.0);
     failures += check("rectangular meanAeroChord", nacawing::meanAeroChord(rect), 1.0); // c_bar = c for a rectangle
@@ -70,7 +70,7 @@ int main()
     // ---------------------------------------------------------------------
     // sectionAt: the doc's example wing, b = 8, sweep 20 deg, tip twist -4 deg.
     // ---------------------------------------------------------------------
-    nacawing::NacaWingParams doc{.b = 8.0, .c_r = 1.0, .c_t = 0.5,
+    nacawing::WingParams doc{.b = 8.0, .c_r = 1.0, .c_t = 0.5,
                                  .sweepLE = 20.0, .twistTip = -4.0, .dihedral = 0.0};
 
     // Worked example (doc section 5), computed by hand from a single TE point (1, 0):
@@ -95,9 +95,9 @@ int main()
     failures += check("sectionAt c/4 does not move with twist (x)", q.x, 4.0 * std::tan(20.0 * std::numbers::pi / 180.0) + 0.125);
     failures += check("sectionAt c/4 does not move with twist (y)", q.y, 0.0);
 
-    // Dihedral lifts the section by z tan(Gamma): LE at the tip with Gamma = 10 deg.
+    // Dihedral lifts the section by z tan(phi): LE at the tip with phi = 10 deg.
     // Twist is set to 0 here, otherwise the LE would also move by the twist about c/4.
-    nacawing::NacaWingParams dih = doc;
+    nacawing::WingParams dih = doc;
     dih.dihedral = 10.0;
     dih.twistTip = 0.0;
     std::vector<nacawing::Point2D> le{{0.0, 0.0}};
@@ -105,21 +105,29 @@ int main()
                       4.0 * std::tan(10.0 * std::numbers::pi / 180.0));
 
     // ---------------------------------------------------------------------
-    // wingSurface: Ns sections from the root (z = 0) to the tip (z = b/2).
+    // wingSurface: wing[i][j] = point i of the loop at station j, Ns stations from the root (z = 0) to the tip (z = b/2).
     // ---------------------------------------------------------------------
     const int Ns = 5;
     std::vector<std::vector<nacawing::Point3D>> wing = nacawing::wingSurface(doc, loop, Ns);
-    failures += check("wingSurface number of sections", static_cast<double>(wing.size()), Ns);
-    failures += check("wingSurface points per section", static_cast<double>(wing[3].size()), static_cast<double>(loop.size()));
-    failures += check("wingSurface first section at root", wing.front()[0].z, 0.0);
-    failures += check("wingSurface last section at tip", wing.back()[0].z, doc.b / 2.0);
-    failures += check("wingSurface stations evenly spaced", wing[1][0].z, 1.0);     // (b/2) / (Ns - 1) = 1
-    failures += check("wingSurface[2] == sectionAt(z = 2)", wing[2][0].x, nacawing::sectionAt(doc, loop, 2.0)[0].x);
+    failures += check("wingSurface one row per loop point", static_cast<double>(wing.size()), static_cast<double>(loop.size()));
+    failures += check("wingSurface Ns stations per row", static_cast<double>(wing[3].size()), Ns);
+    failures += check("wingSurface first station at root", wing[0].front().z, 0.0);
+    failures += check("wingSurface last station at tip", wing[0].back().z, doc.b / 2.0);
+    failures += check("wingSurface stations evenly spaced", wing[0][1].z, 1.0);     // (b/2) / (Ns - 1) = 1
+    failures += check("wingSurface column 2 == sectionAt(z = 2)", wing[0][2].x, nacawing::sectionAt(doc, loop, 2.0)[0].x);
 
     // Same wing, different span: the tip must follow b/2 (catches "z = i" bugs).
-    nacawing::NacaWingParams wide = doc;
+    nacawing::WingParams wide = doc;
     wide.b = 16.0;
-    failures += check("wingSurface tip follows the span", nacawing::wingSurface(wide, loop, Ns).back()[0].z, 8.0);
+    failures += check("wingSurface tip follows the span", nacawing::wingSurface(wide, loop, Ns)[0].back().z, 8.0);
+
+    // SineTip: z_j = (b/2) sin(pi j / (2(Ns-1))). With b/2 = 4 and Ns = 5: z_1 = 4 sin(pi/8) = 1.5307 m.
+    std::vector<std::vector<nacawing::Point3D>> sine = nacawing::wingSurface(doc, loop, Ns, nacawing::SpanSpacing::SineTip);
+    failures += check("SineTip root and tip", sine[0].front().z + sine[0].back().z, 0.0 + doc.b / 2.0);
+    failures += check("SineTip station 1", sine[0][1].z, 4.0 * std::sin(std::numbers::pi / 8.0));
+    // Last gap (tip) smaller than the first gap (root): 1 = true.
+    failures += check("SineTip closer at the tip",
+                      (sine[0][4].z - sine[0][3].z) < (sine[0][1].z - sine[0][0].z) ? 1.0 : 0.0, 1.0);
 
 
     return failures == 0 ? 0 : 1;

@@ -6,31 +6,31 @@
 
 namespace nacawing {
     //For post traitement
-    double taperRatio(const NacaWingParams& w)      //lambda ; taper ratio: 1 = rectangular, 0 = pointed tip
-        {
-            return w.c_t / w.c_r;
-        }     
-
-    double area(const NacaWingParams& w)            //S is the full wing area (both halves)
+    double area(const WingParams& w)            //S is the full wing area (both halves)
         {
             double lambda = taperRatio(w);
             return 0.5*w.b*w.c_r*(1.0+lambda);
         }
         
-    double aspectRatio(const NacaWingParams& w)     //AR the aspect ratio
+    double aspectRatio(const WingParams& w)     //AR the aspect ratio
         {
             double S = area(w);
             return w.b*w.b/S;
         }
         
-    double meanAeroChord(const NacaWingParams& w)  //c̄ the mean aerodynamic chord (corde aérodynamique moyenne), the reference length for the pitching moment.
+    double meanAeroChord(const WingParams& w)  //c̄ the mean aerodynamic chord (corde aérodynamique moyenne), the reference length for the pitching moment.
         {
             double lambda = taperRatio(w);
             return 2.0/3.0*w.c_r*(1.0+lambda+lambda*lambda)/(1.0+lambda);
         }
     
     //Making the wing
-    double chordAt(const NacaWingParams& w, double z)
+    double taperRatio(const WingParams& w)      //lambda ; taper ratio: 1 = rectangular, 0 = pointed tip
+        {
+            return w.c_t / w.c_r;
+        }   
+
+    double chordAt(const WingParams& w, double z)
         {
             double lambda = taperRatio(w);
             double eta = z / (w.b / 2.0);
@@ -39,7 +39,7 @@ namespace nacawing {
 
     std::vector<Point2D> sectionLoop(double m, double p, double t, int n)
         {
-            // Point 0 is the TE upeer passes to LE then lower to its TE
+            // Point 0 is the TE upper passes to LE then lower to its TE
             std::vector<Point2D> upper = upperSurface(m, p, t, n);
             std::vector<Point2D> lower = lowerSurface(m, p, t, n);
             std::reverse(upper.begin(), upper.end());
@@ -48,10 +48,10 @@ namespace nacawing {
             return upper;
         }
 
-    std::vector<Point3D> sectionAt(const NacaWingParams& w, const std::vector<Point2D>& loop, double z)
+    std::vector<Point3D> sectionAt(const WingParams& w, const std::vector<Point2D>& loop, double z)
         {
 
-            auto AngleToRad = [&](double angle) {
+            auto AngleToRad = [](double angle) {
                 return angle * std::numbers::pi / 180.0;};
 
             double eta = z / (w.b / 2.0);
@@ -62,6 +62,7 @@ namespace nacawing {
 
             std::vector<Point3D> section;
             section.reserve(loop.size());          // allocate 2n−1 slots up front
+            double di = std::tan(AngleToRad(w.dihedral));
             for (const auto& q : loop) {                // q.x, q.y = unit loop point
                 // 4. scale
                 double x  = q.x * c;
@@ -70,22 +71,29 @@ namespace nacawing {
                 double xr = x_p + (x-x_p)*std::cos(epsilon) + y*std::sin(epsilon);
                 double yr = -(x-x_p)*std::sin(epsilon) + y*std::cos(epsilon);
                 // 6. translate
-                section.push_back(Point3D{x_LE  + xr, yr + z*std::tan(AngleToRad(w.dihedral)), z });      
+                section.push_back(Point3D{x_LE  + xr, yr + z*di, z });      
                 }
 
                 return section;
         }
 
-     std::vector<std::vector<Point3D>>  wingSurface(const NacaWingParams& w, const std::vector<Point2D>& loop, int Ns)
+     std::vector<std::vector<Point3D>>  wingSurface(const WingParams& w, const std::vector<Point2D>& loop, int Ns,
+                                                    SpanSpacing spacing)
          {
-            std::vector<std::vector<Point3D>> Surface;
-            Surface.reserve(Ns);
-                        
-            for (int i = 0; i < Ns ; i++) {
-                double z = 0.5 * w.b * i / (Ns - 1);
-                Surface.push_back(sectionAt(w, loop, z));
+            // Surface[i][j]: one row per loop point i, one column per station j (see 3Dwing.hpp).
+            std::vector<std::vector<Point3D>> Surface(loop.size(), std::vector<Point3D>(Ns));
+
+            for (int j = 0; j < Ns ; j++) {
+                double eta = static_cast<double>(j) / (Ns - 1);         // 0 at the root, 1 at the tip
+                if (spacing == SpanSpacing::SineTip)
+                    eta = std::sin(0.5 * std::numbers::pi * eta);       // sin(pi j / (2(Ns-1)))
+                double z = 0.5 * w.b * eta;
+
+                std::vector<Point3D> section = sectionAt(w, loop, z);   // the whole loop at this z
+                for (size_t i = 0; i < loop.size(); i++)
+                    Surface[i][j] = section[i];                         // goes in column j
             }
-             return Surface;
+            return Surface;
          }
         
     } // namespace nacawing
