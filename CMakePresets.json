@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "openmp",
+      "displayName": "CPU - OpenMP (Clang)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/openmp-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "Kokkos_ENABLE_OPENMP": "ON",
+        "Kokkos_ENABLE_CUDA": "OFF",
+        "CMAKE_C_COMPILER": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe",
+        "CMAKE_CXX_COMPILER": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe",
+        "OpenMP_libomp_LIBRARY": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/lib/libomp.lib"
+      },
+      "environment": {
+        "PATH": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin;$penv{PATH}"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Windows" ],
+          "intelliSenseMode": "windows-clangcl-x64"
+        }
+      }
+    },
+    {
+      "name": "cuda",
+      "displayName": "GPU - CUDA",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/cuda",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "Kokkos_ENABLE_CUDA": "ON",
+        "Kokkos_ENABLE_OPENMP": "OFF",
+        "Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE": "ON",
+        "CMAKE_CUDA_ARCHITECTURES": "89",
+        "Kokkos_ARCH_ADA89": "ON"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "intelliSenseMode": "windows-msvc-x64",
+          "intelliSenseOptions": {
+            "useCompilerDefaults": false,
+            "additionalCompilerArgs": [ "/std:c++20" ]
+          }
+        }
+      }
+    },
+    {
+      "name": "openmp-debug",
+      "displayName": "CPU - OpenMP Debug",
+      "inherits": "openmp",
+      "binaryDir": "${sourceDir}/build/openmp-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "cuda-debug",
+      "displayName": "GPU - CUDA Debug",
+      "inherits": "cuda",
+      "binaryDir": "${sourceDir}/build/cuda-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ]
+}

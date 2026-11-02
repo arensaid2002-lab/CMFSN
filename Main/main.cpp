@@ -1,8 +1,8 @@
 #include <iostream>
 #include <filesystem>
 #include "MeshHandler.h"
-#include "Errors.h"
 #include "FileIO.h"
+#include "SolverFluid/SolverEuler/Cells_Euler.h"
 
 using namespace Mesh;
 using namespace std;
@@ -10,19 +10,25 @@ using namespace std;
 int main(int argc, char* argv[])
 {
     Kokkos::ScopeGuard guard(argc, argv);
-
+    const auto start = chrono::steady_clock::now();
     MeshHandler meshHandler;
     MeshData_Euler& MeshData = meshHandler.get_Mesh_Euler();
-    
-    string path = "../../../../NACA_0012_mesh_PLOT3D_format/x.1";
-  
+
+    string path = "C:/Users/wali2/source/repos/arensaid2002-lab/CMFSN/NACA_0012_mesh_PLOT3D_format/x.1";
+
     IO::Import_Mesh(path, MeshData, MeshHandler::MeshFileFormat::Plot3D);
-
-    for (int i = 0; i < MeshData.N_nodes; i++)
+    
+    Solver::Cells_Euler<> cells_Euler(2 ,MeshData);
+	auto cellsData = cells_Euler.get_CellsData();
+    const auto Normals = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, cellsData.Normals);
+    for (int direction = 0; direction < 4; direction++)
     {
-        cout << MeshData.X(i)  << endl;
+        cout << Normals(4104, direction, 0) << " " << Normals(4104, direction, 1) << endl;
     }
-    return 0;
+    
+    const auto end = chrono::steady_clock::now();
+    const auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
+    cout << "Execution time: " << duration.count() << " ms" << endl;
 
-    Cells_Euler cells_Euler(MeshData);
+    return 0;
 }

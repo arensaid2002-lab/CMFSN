@@ -2,14 +2,15 @@
 
 #include <Kokkos_Core.hpp>
 #include <iostream>
+#include <type_traits>
 
 namespace NumOps
 {
 
     #pragma region Array_Operations
-    template <typename T, size_t N>   
+    template <typename T, size_t N>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator+(const Kokkos::Array<T, N>& A,const Kokkos::Array<T, N>& B) 
+    Kokkos::Array<T, N> operator+(const Kokkos::Array<T, N>& A,const Kokkos::Array<T, N>& B)
     {
         Kokkos::Array<T, N> C{};
 
@@ -19,8 +20,8 @@ namespace NumOps
         }
         return C;
     }
-    
-    template <typename T, size_t N>   
+
+    template <typename T, size_t N>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator-(const Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
     {
@@ -33,7 +34,7 @@ namespace NumOps
         return C;
     }
 
-    template <typename T, size_t N>   
+    template <typename T, size_t N>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator*(const Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
     {
@@ -46,7 +47,7 @@ namespace NumOps
         return C;
     }
 
-    template <typename T, size_t N>   
+    template <typename T, size_t N>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator/(const Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
     {
@@ -61,7 +62,7 @@ namespace NumOps
     #pragma endregion
 
     #pragma region Scalar_Array_Operations
-    template <typename T, typename S, size_t N>  
+    template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator+(const Kokkos::Array<T, N>& A, const S& b)
@@ -74,7 +75,7 @@ namespace NumOps
         }
         return C;
     }
-    template <typename T, typename S, size_t N>  
+    template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator+(const S& b, const Kokkos::Array<T, N>& A)
@@ -88,7 +89,7 @@ namespace NumOps
         return C;
     }
 
-    template <typename T, typename S, size_t N>  
+    template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator-(const Kokkos::Array<T, N>& A, const S& b)
@@ -101,7 +102,7 @@ namespace NumOps
         }
         return C;
     }
-    template <typename T, typename S, size_t N>  
+    template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator-(const S& b, const Kokkos::Array<T, N>& A)
@@ -114,8 +115,8 @@ namespace NumOps
         }
         return C;
     }
-    
-    template <typename T, typename S, size_t N>  
+
+    template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator *(const Kokkos::Array<T, N>& A, const S& b)
@@ -128,7 +129,7 @@ namespace NumOps
         }
         return C;
     }
-    template <typename T, typename S, size_t N>  
+    template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator *(const S& b, const Kokkos::Array<T, N>& A)
@@ -142,7 +143,7 @@ namespace NumOps
         return C;
     }
 
-    template <typename T, typename S, size_t N>  
+    template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator/(const Kokkos::Array<T, N>& A, const S& b)
@@ -156,7 +157,7 @@ namespace NumOps
         return C;
     }
 
-    template <typename T, typename S, size_t N>  
+    template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator/(const S& b, const Kokkos::Array<T, N>& A)
@@ -170,19 +171,19 @@ namespace NumOps
         return C;
     }
     #pragma endregion
-    
-    template <typename S, size_t N>  
+
+    template <typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<S, N> dot(const Kokkos::Array<S, N> A, const Kokkos::Array<S, N> B)
+    S dot(const Kokkos::Array<S, N>& A, const Kokkos::Array<S, N>& B)
     {
-        T dot_product{};
+        S dot_product{};
 
         for (size_t i = 0; i < N; i++)
         {
-           dot_product += A[i] + B[i];
+           dot_product += A[i] * B[i];
         }
-        return C;
+        return dot_product;
     }
     #pragma endregion
 

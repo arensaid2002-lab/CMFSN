@@ -1,74 +1,48 @@
-#include <Kokkos_Core.hpp>
-#include "MeshFormat.h"
-#include "SolverFluid/SolverEuler/Cells_Euler.h"
-
-using namespace std;
-using namespace Mesh;
-
-using View1D = Kokkos::View<float*, Kokkos::LayoutLeft>;
-using View2D = Kokkos::View<float**, Kokkos::LayoutLeft>;
-using View3D = Kokkos::View<float***, Kokkos::LayoutLeft>;
+#include "Cells_Euler.h"
 
 namespace Solver
 {
         template <typename ExecSpace>
-        Cells_Euler<ExecSpace>::Cells_Euler(const MeshData_Euler& Mesh_Euler) : MeshData(Mesh_Euler)
+        Cells_Euler<ExecSpace>::Cells_Euler(int N_gCell_layers, const MeshData_Euler& Mesh_Euler) : MeshData(Mesh_Euler)
         {
-                Normals = View3D("Normals", MeshData.N_Cells, MeshData.N_edges, 2);
-                Cell_Areas = View1D("Cell_Areas", MeshData.N_Cells);
+            initialize_Cells_metadata(N_gCell_layers);
 
-                rho_old = View1D("rho_old", MeshData.N_Cells);
-                Momentum_x_old = View1D("Momentum_x_old", MeshData.N_Cells);
-                Momentum_y_old = View1D("Momentum_y_old", MeshData.N_Cells);
-                E_old = View1D("E_old", MeshData.N_Cells);
+            CellOps::eval_geometrical_data<ExecSpace>(CellsData_, MeshData);
+			initialize_gcells(CellsData_, MeshData);
+        }
 
-                rho_new = View1D("rho_new", MeshData.N_Cells);
-                Momentum_x_new = View1D("Momentum_x_new", MeshData.N_Cells);
-                Momentum_y_new = View1D("Momentum_y_new", MeshData.N_Cells);
-                E_new = View1D("E_new", MeshData.N_Cells);
+        template <typename ExecSpace>
+        void Cells_Euler<ExecSpace>::initialize_Cells_metadata(int N_gCell_layers)
+        {
+            CellsData_.N_gCell_layers = N_gCell_layers;
+			CellsData_.Nitotal = MeshData.Ni + 2 * CellsData_.N_gCell_layers;
+			CellsData_.Njtotal = MeshData.Nj + 2 * CellsData_.N_gCell_layers;
+            CellsData_.N_cells_total = (CellsData_.Nitotal-1) * (CellsData_.Njtotal-1);
 
-                Flux_mass = View2D("Flux_mass", MeshData.N_Cells, 4);
-                Flux_Momentum_x = View2D("Flux_Momentum_x", MeshData.N_Cells, 4);
-                Flux_Momentum_y = View2D("Flux_Momentum_y", MeshData.N_Cells, 4);
-                Flux_E = View2D("Flux_E", MeshData.N_Cells, 4);
-                D = View2D("D", MeshData.N_Cells, 4);
+            CellsData_.Normals = View3D("Normals", CellsData_.N_cells_total, MeshData.N_edges, 2);
+            CellsData_.Cell_Areas = View1D("Cell_Areas", CellsData_.N_cells_total);
+
+            CellsData_.rho_old = View1D("rho_old", CellsData_.N_cells_total);
+            CellsData_.Momentum_x_old = View1D("Momentum_x_old", CellsData_.N_cells_total);
+            CellsData_.Momentum_y_old = View1D("Momentum_y_old", CellsData_.N_cells_total);
+            CellsData_.E_old = View1D("E_old", CellsData_.N_cells_total);
+
+            CellsData_.rho_new = View1D("rho_new", CellsData_.N_cells_total);
+            CellsData_.Momentum_x_new = View1D("Momentum_x_new", CellsData_.N_cells_total);
+            CellsData_.Momentum_y_new = View1D("Momentum_y_new", CellsData_.N_cells_total);
+            CellsData_.E_new = View1D("E_new", CellsData_.N_cells_total);
+
+            CellsData_.Flux_mass = View2D("Flux_mass", CellsData_.N_cells_total, MeshData.N_edges);
+            CellsData_.Flux_Momentum_x = View2D("Flux_Momentum_x", CellsData_.N_cells_total, MeshData.N_edges);
+            CellsData_.Flux_Momentum_y = View2D("Flux_Momentum_y", CellsData_.N_cells_total, MeshData.N_edges);
+            CellsData_.Flux_E = View2D("Flux_E", CellsData_.N_cells_total, MeshData.N_edges);
+            CellsData_.D = View2D("D", CellsData_.N_cells_total, MeshData.N_edges);
 
         }
 
-
-
-        KOKKOS_FUNCTION
-        static Kokkos::pair<float, float> Cells_Euler::eval_Cell_Normal(int i, int j, int direction)
+        template<typename ExecSpace>
+        void Cells_Euler<ExecSpace>::initialize_gcells(CellsData cellsdata, const MeshData_Euler& meshdata)
         {
-            float delta_x, delta_y;
-            int CellIndex = Cells_Euler::Cell_index(i, j);
-            int NodeIndex = Node_index(i, j);
-                        
-            switch (direction)
-            {
-                case 0: // Bottom
-                    delta_x = MeshData.X(Node_index(i + 1,j)) - MeshData.X(Node_index(i,j));
-                    delta_y = MeshData.Y(Node_index(i + 1,j)) - MeshData.Y(Node_index(i,j));
-
-                    break;
-                
-                case 1: // Right
-                    delta_x = MeshData.X(Node_index(i+1,j + 1)) - MeshData.X(Node_index(i+1,j));
-                    delta_y = MeshData.Y(Node_index(i+1,j + 1)) - MeshData.Y(Node_index(i+1,j));
-                    
-                    break;
-                case 2: // Top
-                    delta_x = MeshData.X(Node_index(i,j + 1)) - MeshData.X(Node_index(i + 1,j + 1));
-                    delta_y = MeshData.Y(Node_index(i,j + 1)) - MeshData.Y(Node_index(i + 1,j + 1));
-                    
-                    break;
-                case 3: // Left
-                    delta_x = MeshData.X(Node_index(i,j)) - MeshData.X(Node_index(i,j + 1));
-                    delta_y = MeshData.Y(Node_index(i,j)) - MeshData.Y(Node_index(i,j + 1));
-                    
-                    break;
-            }
-            return {delta_y, - delta_x};
+            CellOps::ApplyPeriodicity<ExecSpace>(cellsdata, meshdata);
         }
-
 }

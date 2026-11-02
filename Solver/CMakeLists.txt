@@ -2,6 +2,9 @@ add_library(Solver src/SolverFluid/SolverEuler/SolverEuler.cpp)
 
 target_sources(Solver PRIVATE
     include/SolverFluid/SolverEuler/Cells_Euler.h
+    include/SolverFluid/SolverEuler/CellsData.h
+    include/SolverFluid/SolverEuler/CellOps/CellOps.h
+    include/SolverFluid/SolverEuler/CellOps/CellCopy.h
     include/SolverFluid/SolverEuler/Cells_Euler.tpp
 )
 
