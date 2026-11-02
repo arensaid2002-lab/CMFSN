@@ -8,17 +8,17 @@
 #include <vector>
 
 // Wing viewer (written with Claude): draws the half wing from nacawing::wingSurface() in 3D.
-// Axes are the ones of 3Dwing.hpp: x along the chord, y up, z along the span (root z = 0, tip z = b/2).
-// raylib is y-up too, so a Point3D goes straight into a raylib Vector3 (x -> x, y -> y, z -> z).
+// Axes are the ones of 3Dwing.hpp: x along the chord, y along the span (root y = 0, tip y = b/2), z up.
+// raylib is y-up, so toVec swaps them: CAD (x, y span, z up) -> raylib (x, z up, y span).
 //
 // Controls: drag with the left mouse button to turn around the wing, mouse wheel to zoom.
 // The panel on the left changes the airfoil (NACA digits) and the wing (span, chords, sweep, twist, dihedral, stations).
 
 
-// Point3D (double, from CAD) -> Vector3 (float, what raylib draws). sign = -1 mirrors the point to the left wing (z -> -z).
+// Point3D (double, from CAD) -> Vector3 (float, what raylib draws). sign = -1 mirrors the point to the left wing (span -> -span).
 Vector3 toVec(const nacawing::Point3D& q, float sign)
 {
-    return Vector3{static_cast<float>(q.x), static_cast<float>(q.y), sign * static_cast<float>(q.z)};
+    return Vector3{static_cast<float>(q.x), static_cast<float>(q.z), sign * static_cast<float>(q.y)};
 }
 
 // Draws one half wing: wing[i][j] = point i of the loop at station j (see wingSurface).
@@ -124,10 +124,10 @@ int main()
 
         // 3. The 3D scene.
         BeginMode3D(camera);
-        DrawGrid(40, 0.5f);                          // floor grid in the x-z plane (y = 0), 0.5 m squares
+        DrawGrid(40, 0.5f);                          // floor grid in the CAD x-y plane (z = 0), 0.5 m squares
         DrawLine3D(Vector3{0, 0, 0}, Vector3{1, 0, 0}, RED);     // x axis, 1 m long (chord direction)
-        DrawLine3D(Vector3{0, 0, 0}, Vector3{0, 1, 0}, GREEN);   // y axis (up)
-        DrawLine3D(Vector3{0, 0, 0}, Vector3{0, 0, 1}, BLUE);    // z axis (span)
+        DrawLine3D(Vector3{0, 0, 0}, Vector3{0, 1, 0}, GREEN);   // CAD z axis (up)
+        DrawLine3D(Vector3{0, 0, 0}, Vector3{0, 0, 1}, BLUE);    // CAD y axis (span)
         drawHalfWing(wing, 1.0f);
         if (mirror) drawHalfWing(wing, -1.0f);
         EndMode3D();

@@ -30,10 +30,10 @@ namespace nacawing {
             return w.c_t / w.c_r;
         }   
 
-    double chordAt(const WingParams& w, double z)
+    double chordAt(const WingParams& w, double y)
         {
             double lambda = taperRatio(w);
-            double eta = z / (w.b / 2.0);
+            double eta = y / (w.b / 2.0);
             return w.c_r * (1.0-(1.0-lambda)*eta);
         }
 
@@ -48,30 +48,30 @@ namespace nacawing {
             return upper;
         }
 
-    std::vector<Point3D> sectionAt(const WingParams& w, const std::vector<Point2D>& loop, double z)
+    std::vector<Point3D> sectionAt(const WingParams& w, const std::vector<Point2D>& loop, double y)
         {
 
             auto AngleToRad = [](double angle) {
                 return angle * std::numbers::pi / 180.0;};
 
-            double eta = z / (w.b / 2.0);
-            double c = chordAt(w, z);
+            double eta = y / (w.b / 2.0);              // y = span station
+            double c = chordAt(w, y);
             double epsilon = AngleToRad(w.twistTip * eta);
-            double x_LE = z * std::tan(AngleToRad(w.sweepLE));
+            double x_LE = y * std::tan(AngleToRad(w.sweepLE));
             double x_p = c * 0.25;
 
             std::vector<Point3D> section;
             section.reserve(loop.size());          // allocate 2n−1 slots up front
             double di = std::tan(AngleToRad(w.dihedral));
-            for (const auto& q : loop) {                // q.x, q.y = unit loop point
-                // 4. scale
+            for (const auto& q : loop) {                // q.x, q.y = unit loop point (q.y is "up")
+                // 4. scale: the profile's y becomes z (up)
                 double x  = q.x * c;
-                double y  = q.y * c;
-                // 5. twist
-                double xr = x_p + (x-x_p)*std::cos(epsilon) + y*std::sin(epsilon);
-                double yr = -(x-x_p)*std::sin(epsilon) + y*std::cos(epsilon);
-                // 6. translate
-                section.push_back(Point3D{x_LE  + xr, yr + z*di, z });      
+                double z  = q.y * c;
+                // 5. twist about the span axis (y), pivot at c/4
+                double xr = x_p + (x-x_p)*std::cos(epsilon) + z*std::sin(epsilon);
+                double zr = -(x-x_p)*std::sin(epsilon) + z*std::cos(epsilon);
+                // 6. translate: sweep moves x, the span station is y, dihedral lifts z
+                section.push_back(Point3D{x_LE + xr, y, zr + y*di});
                 }
 
                 return section;
@@ -87,9 +87,9 @@ namespace nacawing {
                 double eta = static_cast<double>(j) / (Ns - 1);         // 0 at the root, 1 at the tip
                 if (spacing == SpanSpacing::SineTip)
                     eta = std::sin(0.5 * std::numbers::pi * eta);       // sin(pi j / (2(Ns-1)))
-                double z = 0.5 * w.b * eta;
+                double y = 0.5 * w.b * eta;                             // span station
 
-                std::vector<Point3D> section = sectionAt(w, loop, z);   // the whole loop at this z
+                std::vector<Point3D> section = sectionAt(w, loop, y);   // the whole loop at this y
                 for (size_t i = 0; i < loop.size(); i++)
                     Surface[i][j] = section[i];                         // goes in column j
             }

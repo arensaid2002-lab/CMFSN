@@ -49,8 +49,8 @@ namespace mesh {
         file << "VARIABLES = \"X\" \"Y\" \"Z\"\n"; // line 1
         file << "ZONE I="<< grid.ni + 1 << ", J=" << grid.nj + 1 << ", DATAPACKING=POINT\n"; // line 2
         
-        int size = grid.P.size();
-        for (int i = 0; i < size; i++){
+        
+        for (std::size_t i = 0; i < grid.P.size(); i++){
             file << grid.P[i].x << " " << grid.P[i].y << " " << grid.P[i].z << "\n"; // line 3 to size
             }
     }

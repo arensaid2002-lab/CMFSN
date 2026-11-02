@@ -9,7 +9,7 @@
 #include "nacawing/NACA.hpp"
 
 // Tests for the VLM grid (Mesh/VLMmesh.h).
-// Axes as in 3Dwing.hpp: x along the chord, y up, z along the span (root z = 0, tip z = b/2).
+// Axes as in 3Dwing.hpp: x along the chord, y along the span (root y = 0, tip y = b/2), z up.
 // Grid order (option B, chosen by the team): k = j*(ni+1) + i, the chord index i varies fastest.
 // Expected values are computed by hand from the formulas (NACA Report 460 for y_c).
 
@@ -75,19 +75,19 @@ int main()
     failures += check("vlmGrid P.size = (ni+1)(nj+1)", static_cast<double>(g.P.size()), 35.0);
 
     // Option B order: k = j*(ni+1) + i.
-    failures += check("vlmGrid P[1] is i=1 at the root (z)", g.P[1].z, 0.0);
+    failures += check("vlmGrid P[1] is i=1 at the root (y)", g.P[1].y, 0.0);
     failures += check("vlmGrid P[1] is i=1 at the root (x)", g.P[1].x, c2412[1].x);   // c = 1, so x = s
     failures += check("vlmGrid P[ni+1] is the LE of station 1 (x)", g.P[5].x, 0.0);
     failures += check("vlmGrid last point = tip TE (x)", g.P.back().x, 1.0);
-    failures += check("vlmGrid last point = tip TE (y)", g.P.back().y, 0.0);
-    failures += check("vlmGrid last point = tip TE (z)", g.P.back().z, 4.0);
-    // Camber is kept: point (i = 2, j = 0) has y = y_c(0.5) * c.
-    failures += check("vlmGrid keeps the camber", g.P[2].y, 0.02 / 0.36 * 0.35);
+    failures += check("vlmGrid last point = tip TE (y)", g.P.back().y, 4.0);
+    failures += check("vlmGrid last point = tip TE (z)", g.P.back().z, 0.0);
+    // Camber is kept: point (i = 2, j = 0) has z = y_c(0.5) * c.
+    failures += check("vlmGrid keeps the camber", g.P[2].z, 0.02 / 0.36 * 0.35);
 
-    // SineTip: z_j = (b/2) sin(pi j / (2 nj)). Station 1: 4 sin(pi/12) = 1.03528 m.
-    failures += check("vlmGrid SineTip station 1", g.P[5].z, 4.0 * std::sin(std::numbers::pi / 12.0));
-    double firstGap = g.P[1 * 5].z - g.P[0].z;                              // root gap, station 1 - station 0
-    double lastGap  = g.P[6 * 5].z - g.P[5 * 5].z;                          // tip gap, station 6 - station 5
+    // SineTip: y_j = (b/2) sin(pi j / (2 nj)). Station 1: 4 sin(pi/12) = 1.03528 m.
+    failures += check("vlmGrid SineTip station 1", g.P[5].y, 4.0 * std::sin(std::numbers::pi / 12.0));
+    double firstGap = g.P[1 * 5].y - g.P[0].y;                              // root gap, station 1 - station 0
+    double lastGap  = g.P[6 * 5].y - g.P[5 * 5].y;                          // tip gap, station 6 - station 5
     failures += check("vlmGrid SineTip closer at the tip", lastGap < firstGap ? 1.0 : 0.0, 1.0);
 
     // ---------------------------------------------------------------------
