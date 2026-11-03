@@ -7,28 +7,29 @@
 using namespace std;
 namespace Mesh
 {
-    template <typename T = float>
-    class MeshHandler
+    enum class MeshFileFormat
     {
-        public:
-        
-        enum class MeshFileFormat
-        {
-            Plot3D //Ajouter des types de fichier supp
-        };
-        
-        
-        public:
-        
-        
-        MeshHandler() = default;
-        ~MeshHandler() = default;
-        
-        MeshData_Euler<T>& get_Mesh_Euler();
-
-        private:
-        MeshData_Euler<T> Mesh_Euler;
-
+        Plot3D //Ajouter des types de fichier supp
     };
+        template <typename T = float>
+        class MeshHandler
+        {
+            public:
+        
+
+        
+        
+            public:
+        
+        
+            MeshHandler() = default;
+            ~MeshHandler() = default;
+        
+            MeshData_Structured<T>& get_Mesh_Euler();
+
+            private:
+            MeshData_Structured<T> Mesh_Euler;
+
+        };
 }
 #include "MeshHandler.tpp"

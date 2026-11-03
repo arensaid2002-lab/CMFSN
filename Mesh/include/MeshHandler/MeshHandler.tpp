@@ -7,7 +7,7 @@
 namespace Mesh
 {
     template <typename T>
-    MeshData_Euler<T>& MeshHandler<T>::get_Mesh_Euler()
+    MeshData_Structured<T>& MeshHandler<T>::get_Mesh_Euler()
     {
         return Mesh_Euler;
     }

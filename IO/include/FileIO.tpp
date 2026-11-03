@@ -12,7 +12,7 @@ using namespace Mesh;
 namespace IO
 {
     template <typename T>
-    void Import_Mesh(string path, MeshData_Euler<T>& Mesh_Euler, typename MeshHandler<T>::MeshFileFormat Format)
+    void Import_Mesh(string path, MeshData_Structured<T>& Mesh_Euler, typename MeshHandler<T>::MeshFileFormat Format)
     {
         try
         {

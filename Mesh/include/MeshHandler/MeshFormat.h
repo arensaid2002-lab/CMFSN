@@ -7,7 +7,7 @@ using namespace std;
 namespace Mesh
 {
     template <typename T = float>
-    struct MeshData_Euler
+    struct MeshData_Structured
     {
         int Ni{}, Nj{}, N_nodes{}, N_edges{ 4 }, N_Cells{};
 

@@ -7,7 +7,7 @@ using namespace Kokkos;
 namespace Solver
 {
 	template <typename T>
-	SolverEuler<T>::SolverEuler(T Mach_inf, T gamma, T alpha,  int N_gLayer, const MeshData_Euler<T>& Mesh_Euler) : cells_euler(N_gLayer, Mesh_Euler)
+	SolverFVM<T>::SolverFVM(T Mach_inf, T gamma, T alpha,  int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : cells_euler(N_gLayer, Mesh_Euler)
 	{
 		gamma_ = gamma;
 		Mach_inf_ = Mach_inf;

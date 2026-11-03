@@ -9,18 +9,17 @@ namespace Solver
     class Cells_Euler
     {
         public:
-            Cells_Euler(int N_gCell_layers, const MeshData_Euler<T>& Mesh_Euler);
+            Cells_Euler(T Mach_inf, T gamma, T alpha,int N_GhostLayers, const MeshData_Structured<T>& MeshData);
             ~Cells_Euler() = default;
 
-			void init_Cells_metadata(int N_gCell_layers);
-
-            void init_gcells(CellsData<T> cellsdata, const MeshData_Euler<T>& meshdata);
+            void initialize_cells();
+            void initialize_ghosts(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata);
 
 			CellsData<T> get_CellsData() const { return CellsData_; }
-            //CellsData<T> get_CellsData() const {return CellsData_;}
+     
         private:
-            
-            const MeshData_Euler<T> MeshData;
+            T rho_inf_{ 1.0f }, P_inf_{ 1.0f }, gamma_, Mach_inf_, velocity_u_inf, velocity_v_inf, alpha_;
+            const MeshData_Structured<T>& MeshData_;
             CellsData<T> CellsData_;
     };
 }

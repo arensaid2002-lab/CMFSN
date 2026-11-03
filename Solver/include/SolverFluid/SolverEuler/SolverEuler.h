@@ -6,22 +6,22 @@ using namespace Mesh;
 using ExecSpace = Kokkos::DefaultExecutionSpace;
 namespace Solver
 {
-	enum class TraversalPolicy
+	enum class SolverTypes
     {
-        Flat1D,
-        MD2D
+        Euler2D,
+        RANS2D,
     };
-    template <typename T = float, TraversalPolicy Policy = TraversalPolicy::MD2D >
-    class SolverEuler 
+    template <typename T = float, SolverTypes  = SolverTypes::Euler2D >
+    class SolverFVM 
     {
         public:
-            SolverEuler(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Euler<T>& Mesh_Euler);
+            SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler);
 
             void init_cells();
 
 
 
-            void eval_dissipation()
+            void eval_dissipation();
 
         private:
             Cells_Euler<ExecSpace, T> cells_euler;

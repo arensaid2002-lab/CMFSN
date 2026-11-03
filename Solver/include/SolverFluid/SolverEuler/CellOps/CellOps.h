@@ -69,7 +69,7 @@ namespace Solver::CellOps
         */
         template<typename T, typename P = Kokkos::pair<T, T>, DataFields Field = DataFields::NormalUnitVector>
         KOKKOS_FUNCTION
-        P eval_Cell_Normal(int i, int j, int direction, const MeshData_Euler<T>& meshdata)
+        P eval_CellNormal(int i, int j, int direction, const MeshData_Structured<T>& meshdata)
         {
             int Ni = meshdata.Ni;
             T delta_x = T{0}, delta_y = T{0};
@@ -122,7 +122,7 @@ namespace Solver::CellOps
         */
         template <typename T>
         KOKKOS_FUNCTION
-        T eval_Cell_Area(int i, int j, const MeshData_Euler<T>& meshdata)
+        T eval_CellArea(int i, int j, const MeshData_Structured<T>& meshdata)
         {
             int Ni = meshdata.Ni;
             T delta_x1 = meshdata.X(Node_index(i + 1, j+ 1, Ni)) - meshdata.X(Node_index(i, j, Ni));
@@ -135,7 +135,7 @@ namespace Solver::CellOps
         }
 
         template <typename ExecSpace, typename T>
-   	    void eval_geometrical_data(CellsData<T> cellsdata, const MeshData_Euler<T>& meshdata)
+   	    void eval_GeometricalData(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata)
 	    {
             Kokkos::parallel_for("eval_geometrical_data", Kokkos::RangePolicy<ExecSpace>(0, meshdata.N_Cells), KOKKOS_LAMBDA(int k_origin)
             {
@@ -158,7 +158,7 @@ namespace Solver::CellOps
 	    }
 
         template <typename ExecSpace, CellCopyFields Fields = CellCopyFields::All, typename T>
-        void ApplyPeriodicity(CellsData<T> cellsdata, const MeshData_Euler<T>& meshdata)
+        void ApplyPeriodicity(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata)
         {
             Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, meshdata.Nj-1), KOKKOS_LAMBDA(int j)
             {
@@ -182,5 +182,4 @@ namespace Solver::CellOps
             Kokkos::fence();
         }
 
-        void mirror_cells
 }

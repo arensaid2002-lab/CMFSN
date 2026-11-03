@@ -17,6 +17,35 @@ namespace Solver
     template <typename T = float>
     struct CellsData
     {
+		CellsData(int N_ghostlayers_, const MeshData_Structured<T>& meshdata) :
+			N_i_mesh(meshdata.Ni), N_j_mesh(meshdata.Nj), N_edges(meshdata.N_edges), N_cells_mesh(meshdata.N_Cells)
+        {
+            N_ghostlayers   = N_ghostlayers_;
+            Nitotal         = MeshData.Ni + 2 * N_ghostlayers;
+            Njtotal         = MeshData.Nj + 2 * N_ghostlayers;
+            N_cells_total   = (Nitotal - 1) * (Njtotal - 1);
+
+            Normals     = View3D<T>("Normals", N_cells_total, MeshData.N_edges, 2);
+            Cell_Areas  = View1D<T>("Cell_Areas", N_cells_total);
+
+            velocity_u      = View1D<T>("velocity_u", N_cells_total);
+            velocity_v      = View1D<T>("velocity_v", N_cells_total);
+            rho_old         = View1D<T>("rho_old", N_cells_total);
+            Momentum_u_old  = View1D<T>("Momentum_u_old", N_cells_total);
+            Momentum_v_old  = View1D<T>("Momentum_v_old", N_cells_total);
+            E_old           = View1D<T>("E_old", N_cells_total);
+
+            rho_new         = View1D<T>("rho_new", N_cells_total);
+            Momentum_u_new  = View1D<T>("Momentum_u_new", N_cells_total);
+            Momentum_v_new  = View1D<T>("Momentum_v_new", N_cells_total);
+            E_new           = View1D<T>("E_new", N_cells_total);
+
+            Flux_mass       = View2D<T>("Flux_mass", N_cells_total, MeshData.N_edges);
+            Flux_Momentum_u = View2D<T>("Flux_Momentum_u", N_cells_total, MeshData.N_edges);
+            Flux_Momentum_v = View2D<T>("Flux_Momentum_v", N_cells_total, MeshData.N_edges);
+            Flux_E          = View2D<T>("Flux_E", N_cells_total, MeshData.N_edges);
+            D               = View2D<T>("D", N_cells_total, MeshData.N_edges);
+        }
         View1D<T> Cell_Areas;
         View1D<T> velocity_u, velocity_v, pressure;
         View1D<T> rho_old, Momentum_u_old, Momentum_v_old, E_old;
@@ -24,6 +53,7 @@ namespace Solver
         View2D<T> Flux_mass, Flux_Momentum_u, Flux_Momentum_v, Flux_E, D;
         View3D<T> Normals;
 
-        int N_cells_total, Nitotal, Njtotal, N_gCell_layers;
+        int N_i_mesh, N_j_mesh, N_edges, N_cells_mesh;
+        int N_cells_total, Nitotal, Njtotal, N_ghostlayers;
     };
 }
