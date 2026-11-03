@@ -1,14 +1,23 @@
 #pragma once
 
+#include <iostream>
 #include "CellsEuler/CellsData.h"
 #include "CellOps/CellCopy.h"
 
+using ExecSpace = Kokkos::DefaultExecutionSpace;
 namespace Solver::CellOps
 {
-    enum class GeometricalDataFields
+    enum class DataFields
     {
-        Normals,
-        Distances
+        #pragma region Statefields
+        Conservative,
+        Velocity,
+        Fluxes,
+        #pragma endregion
+        #pragma region Geometrical Data Fields
+        NormalUnitVector,
+        EdgeLength
+        #pragma endregion
     };
 
         KOKKOS_INLINE_FUNCTION
@@ -17,6 +26,40 @@ namespace Solver::CellOps
         KOKKOS_INLINE_FUNCTION
         int Cell_index(int i, int j, int Ni) {return i + (Ni-1)*j;}
 
+        KOKKOS_FUNCTION
+        template <typename T, std::size_t N, DataFields Fields = DataFields::Velocity>
+        Kokkos::Array<T, N> extract_DataField_toArray(CellsData<T> cellsdata, int k, int direction = 0)
+        {
+            if constexpr (Fields == DataFields::Velocity)
+            {
+                N = 2; // size of velocity vector
+                Kokkos::Array<T, N> Velocity = {cellsdata.velocity_u(k), cellsdata.velocity_v(k)};
+                return Velocity;
+            }
+            else if constexpr (Fields == DataFields::Normals)
+            {
+                N = 2; // size of normal vector
+                Kokkos::Array<T, N> Normals = {cellsdata.Normals(k, direction, 0), cellsdata.Normals(k, direction, 1)};
+                return Normals;
+            }
+            else if constexpr (Fields == DataFields::Fluxes)
+            {
+                N = 4; // size of flux vector
+                Kokkos::Array<T, N> Fluxes = {cellsdata.Flux_mass(k, direction), cellsdata.Flux_Momentum_u(k, direction), cellsdata.Flux_Momentum_v(k, direction), cellsdata.Flux_E(k, direction)};
+                return Fluxes;
+            }
+            else if constexpr (Fields == DataFields::Conservative)
+            {
+                N = 4; // size of Conservative vector
+                Kokkos::Array<T, N> Conservative = {cellsdata.rho_old(k), cellsdata.Momentum_u_old(k), cellsdata.Momentum_v_old(k), cellsdata.E_old(k) };
+                return Conservative;
+            }
+            else
+            {
+                assert(Fields == DataFields::Velocity|| Fields == DataFields::Normals || Fields == DataFields::Fluxes || Fields == DataFields::Conservative, "Invalid data field specified");
+            }
+        }
+
         /**
         * Evaluates the geometrical data for a given cell.
         * @param i The cell index in the i-direction.
@@ -24,9 +67,9 @@ namespace Solver::CellOps
         * @param direction The direction of the normal vector.
         * @param meshdata The mesh data.
         */
-        template<GeometricalDataFields Field = GeometricalDataFields::Normals, typename T>
+        template<typename T, typename P = Kokkos::pair<T, T>, DataFields Field = DataFields::NormalUnitVector>
         KOKKOS_FUNCTION
-        Kokkos::pair<T, T> eval_Cell_Normal(int i, int j, int direction, const MeshData_Euler<T>& meshdata)
+        P eval_Cell_Normal(int i, int j, int direction, const MeshData_Euler<T>& meshdata)
         {
             int Ni = meshdata.Ni;
             T delta_x = T{0}, delta_y = T{0};
@@ -55,17 +98,18 @@ namespace Solver::CellOps
 
                     break;
             }
-            if constexpr (Field == GeometricalDataFields::Normals)
+			T Norm = Kokkos::sqrt(delta_x * delta_x + delta_y * delta_y);
+            if constexpr (Field == DataFields::NormalUnitVector)
             {
-                return { delta_y, -delta_x };
+                return { delta_y/ Norm, -delta_x/ Norm };
             }
-			else if constexpr (Field == GeometricalDataFields::Distances)
+			else if constexpr (Field == DataFields::EdgeLength)
 			{
-				return { delta_x, delta_y };
+                return Norm;
 			}
             else
             {
-				static_assert(Field == GeometricalDataFields::Normals || Field == GeometricalDataFields::Distances, "Invalid GeometricalDataFields value");
+				assert(Field == DataFields::NormalUnitVector || Field == DataFields::EdgeLength, "Invalid GeometricalDataFields value");
             }
         }
 
@@ -90,7 +134,7 @@ namespace Solver::CellOps
             return T{0.5} * ((delta_x1 * delta_y2 - delta_x2 * delta_y1));
         }
 
-        template <typename ExecSpace = Kokkos::DefaultExecutionSpace, typename T>
+        template <typename ExecSpace, typename T>
    	    void eval_geometrical_data(CellsData<T> cellsdata, const MeshData_Euler<T>& meshdata)
 	    {
             Kokkos::parallel_for("eval_geometrical_data", Kokkos::RangePolicy<ExecSpace>(0, meshdata.N_Cells), KOKKOS_LAMBDA(int k_origin)
@@ -113,7 +157,7 @@ namespace Solver::CellOps
             Kokkos::fence();
 	    }
 
-        template <typename ExecSpace = Kokkos::DefaultExecutionSpace, CellCopyFields Fields = CellCopyFields::All, typename T>
+        template <typename ExecSpace, CellCopyFields Fields = CellCopyFields::All, typename T>
         void ApplyPeriodicity(CellsData<T> cellsdata, const MeshData_Euler<T>& meshdata)
         {
             Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, meshdata.Nj-1), KOKKOS_LAMBDA(int j)
@@ -138,5 +182,5 @@ namespace Solver::CellOps
             Kokkos::fence();
         }
 
-    
+        void mirror_cells
 }

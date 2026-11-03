@@ -64,7 +64,6 @@ endif()
 add_subdirectory(IO)
 add_subdirectory(Mesh)
 add_subdirectory(Solver)
-add_subdirectory(NumOps)
 add_subdirectory(UI)
 
 ##===========Executable===========##

@@ -4,7 +4,7 @@
 #include <iostream>
 #include <type_traits>
 
-namespace NumOps
+namespace Solver::NumOps
 {
 
     #pragma region Array_Operations

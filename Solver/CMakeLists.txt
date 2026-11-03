@@ -6,7 +6,7 @@ target_sources(Solver PRIVATE
     include/SolverFluid/SolverEuler/CellOps/CellOps.h
     include/SolverFluid/SolverEuler/CellOps/CellCopy.h
     include/SolverFluid/SolverEuler/CellsEuler/CellsEuler.tpp
-)
+    include/SolverFluid/SolverEuler/NumOps/ArrayOps.h)
 
 set_source_files_properties(
     include/SolverFluid/SolverEuler/CellsEuler/CellsEuler.tpp

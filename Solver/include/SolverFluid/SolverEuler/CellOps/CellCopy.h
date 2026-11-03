@@ -60,12 +60,12 @@ namespace Solver
             if constexpr (Fields == CellCopyFields::OldState || Fields == CellCopyFields::States || Fields == CellCopyFields::All)
             {
                 detail::copy_cell_views(k_source, k_destination,
-                    cellsdata.rho_old, cellsdata.Momentum_x_old, cellsdata.Momentum_y_old, cellsdata.E_old);
+                    cellsdata.rho_old, cellsdata.Momentum_u_old, cellsdata.Momentum_v_old, cellsdata.E_old);
             }
             if constexpr (Fields == CellCopyFields::NewState || Fields == CellCopyFields::States || Fields == CellCopyFields::All)
             {
                 detail::copy_cell_views(k_source, k_destination,
-                    cellsdata.rho_new, cellsdata.Momentum_x_new, cellsdata.Momentum_y_new, cellsdata.E_new);
+                    cellsdata.rho_new, cellsdata.Momentum_u_new, cellsdata.Momentum_v_new, cellsdata.E_new);
             }
             if constexpr (Fields == CellCopyFields::Geometry || Fields == CellCopyFields::All)
             {

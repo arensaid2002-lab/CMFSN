@@ -25,18 +25,18 @@ namespace Solver
 			CellsData_.velocity_u = View1D<T>("velocity_u", CellsData_.N_cells_total);
 			CellsData_.velocity_v = View1D<T>("velocity_v", CellsData_.N_cells_total);
             CellsData_.rho_old = View1D<T>("rho_old", CellsData_.N_cells_total);
-            CellsData_.Momentum_x_old = View1D<T>("Momentum_x_old", CellsData_.N_cells_total);
-            CellsData_.Momentum_y_old = View1D<T>("Momentum_y_old", CellsData_.N_cells_total);
+            CellsData_.Momentum_u_old = View1D<T>("Momentum_u_old", CellsData_.N_cells_total);
+            CellsData_.Momentum_v_old = View1D<T>("Momentum_v_old", CellsData_.N_cells_total);
             CellsData_.E_old = View1D<T>("E_old", CellsData_.N_cells_total);
 
             CellsData_.rho_new = View1D<T>("rho_new", CellsData_.N_cells_total);
-            CellsData_.Momentum_x_new = View1D<T>("Momentum_x_new", CellsData_.N_cells_total);
-            CellsData_.Momentum_y_new = View1D<T>("Momentum_y_new", CellsData_.N_cells_total);
+            CellsData_.Momentum_u_new = View1D<T>("Momentum_u_new", CellsData_.N_cells_total);
+            CellsData_.Momentum_v_new = View1D<T>("Momentum_v_new", CellsData_.N_cells_total);
             CellsData_.E_new = View1D<T>("E_new", CellsData_.N_cells_total);
 
             CellsData_.Flux_mass = View2D<T>("Flux_mass", CellsData_.N_cells_total, MeshData.N_edges);
-            CellsData_.Flux_Momentum_x = View2D<T>("Flux_Momentum_x", CellsData_.N_cells_total, MeshData.N_edges);
-            CellsData_.Flux_Momentum_y = View2D<T>("Flux_Momentum_y", CellsData_.N_cells_total, MeshData.N_edges);
+            CellsData_.Flux_Momentum_u = View2D<T>("Flux_Momentum_u", CellsData_.N_cells_total, MeshData.N_edges);
+            CellsData_.Flux_Momentum_v = View2D<T>("Flux_Momentum_v", CellsData_.N_cells_total, MeshData.N_edges);
             CellsData_.Flux_E = View2D<T>("Flux_E", CellsData_.N_cells_total, MeshData.N_edges);
             CellsData_.D = View2D<T>("D", CellsData_.N_cells_total, MeshData.N_edges);
 
