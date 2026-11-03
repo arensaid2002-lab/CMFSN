@@ -11,25 +11,25 @@ using namespace Mesh;
 
 namespace IO
 {
-    template <typename T>
-    void Import_Mesh(string path, MeshData_Structured<T>& Mesh_Euler, typename MeshHandler<T>::MeshFileFormat Format)
+    template <typename T, typename MeshFileFormat>
+    void Import_Mesh(string path, MeshData_Structured<T>& MeshData)
     {
         try
         {
             fstream Meshfile(path);
             if (Meshfile.is_open())
             {
-                Meshfile >> Mesh_Euler.Ni >> Mesh_Euler.Nj;
-                Mesh_Euler.N_nodes = Mesh_Euler.Ni * Mesh_Euler.Nj;
-                Mesh_Euler.N_Cells = (Mesh_Euler.Ni-1) * (Mesh_Euler.Nj-1);
+                Meshfile >> MeshData.Ni >> MeshData.Nj;
+                MeshData.N_nodes = MeshData.Ni * MeshData.Nj;
+                MeshData.N_Cells = (MeshData.Ni-1) * (MeshData.Nj-1);
  
-                Kokkos::View<T*, Kokkos::LayoutLeft > X("X", Mesh_Euler.N_nodes);
-                Kokkos::View<T*, Kokkos::LayoutLeft > Y("X", Mesh_Euler.N_nodes);
+                Kokkos::View<T*, Kokkos::LayoutLeft > X("X", MeshData.N_nodes);
+                Kokkos::View<T*, Kokkos::LayoutLeft > Y("X", MeshData.N_nodes);
 
                 auto X_host = Kokkos::create_mirror_view(X);
                 auto Y_host = Kokkos::create_mirror_view(Y);
 
-                for(int i = 0; i < Mesh_Euler.N_nodes; i++)
+                for(int i = 0; i < MeshData.N_nodes; i++)
                 {
                     if(!(Meshfile >> X_host(i)))
                     {
@@ -37,7 +37,7 @@ namespace IO
                     }
                 }
 
-                for(int i = 0; i < Mesh_Euler.N_nodes; i++)
+                for(int i = 0; i < MeshData.N_nodes; i++)
                 {
                     if(!(Meshfile >> Y_host(i)))
                     {
@@ -47,8 +47,8 @@ namespace IO
                 Kokkos::deep_copy(X, X_host);
                 Kokkos::deep_copy(Y, Y_host);
 
-                Mesh_Euler.X = X;
-                Mesh_Euler.Y = Y; 
+                MeshData.X = X;
+                MeshData.Y = Y; 
             }
             else
             {

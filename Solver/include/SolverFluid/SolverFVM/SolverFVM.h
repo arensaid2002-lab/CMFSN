@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CellsEuler/CellsEuler.h"
+#include "CellsHandler/CellsHandler.h"
 
 using namespace Mesh;
 using ExecSpace = Kokkos::DefaultExecutionSpace;
@@ -11,7 +11,7 @@ namespace Solver
         Euler2D,
         RANS2D,
     };
-    template <typename T = float, SolverTypes  = SolverTypes::Euler2D >
+    template <typename T = float, SolverTypes SType = SolverTypes::Euler2D >
     class SolverFVM 
     {
         public:
@@ -24,9 +24,8 @@ namespace Solver
             void eval_dissipation();
 
         private:
-            Cells_Euler<ExecSpace, T> cells_euler;
+            CellsHandler<ExecSpace, T> cells_handler;
 
-			T rho_inf_{1.0f}, P_inf_{1.0f}, gamma_, Mach_inf_, velocity_u_inf, velocity_v_inf, alpha_;
     };
 }
-#include "SolverEuler.tpp"
+#include "SolverFVM.tpp"

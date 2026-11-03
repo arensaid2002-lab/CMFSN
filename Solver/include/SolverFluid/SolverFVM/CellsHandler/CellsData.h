@@ -56,4 +56,19 @@ namespace Solver
         int N_i_mesh, N_j_mesh, N_edges, N_cells_mesh;
         int N_cells_total, Nitotal, Njtotal, N_ghostlayers;
     };
+
+    template <typename T = float>
+    struct initialization_data
+    {
+        initialization_data(T Mach_inf, T gamma, T alpha)
+        {
+            gamma_ = gamma;
+            Mach_inf_ = Mach_inf;
+            alpha_ = alpha; // Radians
+            velocity_u_inf = Mach_inf * sqrt(gamma_) * cos(alpha_);
+            velocity_v_inf = Mach_inf * sqrt(gamma_) * sin(alpha_);
+        }
+        T rho_inf_{ 1.0f }, P_inf_{ 1.0f }, gamma_, Mach_inf_, velocity_u_inf, velocity_v_inf, alpha_;
+    };
+
 }

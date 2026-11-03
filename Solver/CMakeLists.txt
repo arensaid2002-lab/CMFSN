@@ -1,21 +1,24 @@
-add_library(Solver src/SolverFluid/SolverEuler/SolverEuler.cpp)
+add_library(Solver src/SolverFluid/SolverFVM/SolverFVM.cpp)
 
 target_sources(Solver PRIVATE
-    include/SolverFluid/SolverEuler/CellsEuler/CellsEuler.h
-    include/SolverFluid/SolverEuler/CellsEuler/CellsData.h
-    include/SolverFluid/SolverEuler/CellOps/CellOps.h
-    include/SolverFluid/SolverEuler/CellOps/CellCopy.h
-    include/SolverFluid/SolverEuler/CellsEuler/CellsEuler.tpp
-    include/SolverFluid/SolverEuler/NumOps/ArrayOps.h)
+    include/SolverFluid/SolverFVM/SolverFVM.h
+    include/SolverFluid/SolverFVM/SolverFVM.tpp
+    include/SolverFluid/SolverFVM/CellsHandler/CellsHandler.h
+    include/SolverFluid/SolverFVM/CellsHandler/CellsData.h
+    include/SolverFluid/SolverFVM/CellOps/CellOps.h
+    include/SolverFluid/SolverFVM/CellOps/CellCopy.h
+    include/SolverFluid/SolverFVM/CellsHandler/CellsHandler.tpp
+    include/SolverFluid/SolverFVM/NumOps/ArrayOps.h)
 
 set_source_files_properties(
-    include/SolverFluid/SolverEuler/CellsEuler/CellsEuler.tpp
+    include/SolverFluid/SolverFVM/SolverFVM.tpp
+    include/SolverFluid/SolverFVM/CellsHandler/CellsHandler.tpp
     PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
 target_include_directories(Solver PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/SolverFluid/SolverEuler"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/SolverFluid/SolverFVM"
 
 )
 
@@ -23,7 +26,7 @@ target_link_libraries(Solver PUBLIC Eigen3::Eigen Mesh Kokkos::kokkos)
 
 if(Kokkos_ENABLE_CUDA)
     set_source_files_properties(
-        src/SolverFluid/SolverEuler/SolverEuler.cpp
+        src/SolverFluid/SolverFVM/SolverFVM.cpp
         PROPERTIES LANGUAGE CUDA
     )
 endif()

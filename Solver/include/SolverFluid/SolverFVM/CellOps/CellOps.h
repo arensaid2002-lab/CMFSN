@@ -1,7 +1,7 @@
 #pragma once
 
 #include <iostream>
-#include "CellsEuler/CellsData.h"
+#include "CellsHandler/CellsData.h"
 #include "CellOps/CellCopy.h"
 
 using ExecSpace = Kokkos::DefaultExecutionSpace;
@@ -26,8 +26,9 @@ namespace Solver::CellOps
         KOKKOS_INLINE_FUNCTION
         int Cell_index(int i, int j, int Ni) {return i + (Ni-1)*j;}
 
-        KOKKOS_FUNCTION
+        
         template <typename T, std::size_t N, DataFields Fields = DataFields::Velocity>
+        KOKKOS_FUNCTION
         Kokkos::Array<T, N> extract_DataField_toArray(CellsData<T> cellsdata, int k, int direction = 0)
         {
             if constexpr (Fields == DataFields::Velocity)
@@ -56,7 +57,7 @@ namespace Solver::CellOps
             }
             else
             {
-                assert(Fields == DataFields::Velocity|| Fields == DataFields::Normals || Fields == DataFields::Fluxes || Fields == DataFields::Conservative, "Invalid data field specified");
+                static_assert(Fields == DataFields::Velocity|| Fields == DataFields::NormalUnitVector || Fields == DataFields::Fluxes || Fields == DataFields::Conservative, "Invalid data field specified");
             }
         }
 
@@ -67,9 +68,9 @@ namespace Solver::CellOps
         * @param direction The direction of the normal vector.
         * @param meshdata The mesh data.
         */
-        template<typename T, typename P = Kokkos::pair<T, T>, DataFields Field = DataFields::NormalUnitVector>
+        template<typename T, DataFields Field = DataFields::NormalUnitVector>
         KOKKOS_FUNCTION
-        P eval_CellNormal(int i, int j, int direction, const MeshData_Structured<T>& meshdata)
+        auto eval_CellNormal(int i, int j, int direction, const MeshData_Structured<T>& meshdata)
         {
             int Ni = meshdata.Ni;
             T delta_x = T{0}, delta_y = T{0};
@@ -109,7 +110,7 @@ namespace Solver::CellOps
 			}
             else
             {
-				assert(Field == DataFields::NormalUnitVector || Field == DataFields::EdgeLength, "Invalid GeometricalDataFields value");
+				static_assert(Field == DataFields::NormalUnitVector || Field == DataFields::EdgeLength, "Invalid GeometricalDataFields value");
             }
         }
 
@@ -181,5 +182,19 @@ namespace Solver::CellOps
             });
             Kokkos::fence();
         }
+		template<typename ExecSpace, typename T>
+        void ApplyInitialConditions(CellsData<T> cellsdata, const initialization_data<T>& init_data)
+        {
+            Kokkos::parallel_for("InitialConditions", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_cells_total), KOKKOS_LAMBDA(int k)
+            {
+                cellsdata.rho_old(k) = init_data.rho_inf_;
+                cellsdata.Momentum_u_old(k) = init_data.rho_inf_ * init_data.velocity_u_inf_;
+                cellsdata.Momentum_v_old(k) = init_data.rho_inf_ * init_data.velocity_v_inf_;
+                cellsdata.E_old(k) = 1.0f / (init_data.gamma_ - 1.0f) + 0.5f * init_data.gamma_*init_data.Mach_inf_*init_data.Mach_inf_;
+            });
+            Kokkos::fence();
+        }
+
+
 
 }
