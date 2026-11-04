@@ -18,7 +18,7 @@ namespace Solver
     struct CellsData
     {
 		CellsData(int N_ghostlayers_, const MeshData_Structured<T>& meshdata) :
-			N_i_mesh(meshdata.Ni), N_j_mesh(meshdata.Nj), N_edges(meshdata.N_edges), N_cells_mesh(meshdata.N_Cells)
+			Ni_mesh(meshdata.Ni), Nj_mesh(meshdata.Nj), N_edges(meshdata.N_edges), N_cells_mesh(meshdata.N_Cells)
         {
             N_ghostlayers   = N_ghostlayers_;
             Nitotal         = meshdata.Ni + 2 * N_ghostlayers;
@@ -53,7 +53,7 @@ namespace Solver
         View2D<T> Flux_mass, Flux_Momentum_u, Flux_Momentum_v, Flux_E, D;
         View3D<T> Normals;
 
-        int N_i_mesh, N_j_mesh, N_edges, N_cells_mesh;
+        int Ni_mesh, Nj_mesh, N_edges, N_cells_mesh;
         int N_cells_total, Nitotal, Njtotal, N_ghostlayers;
     };
 

@@ -27,13 +27,13 @@ namespace Solver::CellOps
         int Cell_index(int i, int j, int Ni) {return i + (Ni-1)*j;}
 
         template <typename ExecSpace, CellCopyFields Fields = CellCopyFields::All, typename T>
-        void ApplyPeriodicity(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata)
+        void ApplyPeriodicity(CellsData<T> cellsdata)
         {
-            Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_ghostlayers*(cellsdata.Nj-1)), KOKKOS_LAMBDA(int K_g)
+            Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_ghostlayers*(cellsdata.Nj_mesh-1)), KOKKOS_LAMBDA(int K_g)
             {
 				int i_Ldestination = K_g % cellsdata.N_ghostlayers;
 				int j_Ldestination = K_g / cellsdata.N_ghostlayers;
-			    int i_Lsource = i_Ldestination + (cellsdata.Ni-1);
+			    int i_Lsource = i_Ldestination + (cellsdata.Ni_mesh -1);
                 int j_Lsource = j_Ldestination;
                 int k_Lcell_source = Cell_index(i_Lsource, j_Lsource, cellsdata.Nitotal);
                 int k_Lcell_destination = Cell_index(i_Ldestination, j_Ldestination, cellsdata.Nitotal);
@@ -41,29 +41,13 @@ namespace Solver::CellOps
 
                 int i_Rsource = K_g % cellsdata.N_ghostlayers + cellsdata.N_ghostlayers;
 				int j_Rsource = K_g / cellsdata.N_ghostlayers;
-				int i_Rdestination = i_Rsource + (meshdata.Ni - 1);
+				int i_Rdestination = i_Rsource + (cellsdata.Ni_mesh - 1);
 				int j_Rdestination = j_Rsource;
                 
                 int k_Rcell_source = Cell_index(i_Rsource, j_Rsource, cellsdata.Nitotal);
                 int k_Rcell_destination = Cell_index(i_Rdestination, j_Rdestination, cellsdata.Nitotal);
-                copy_cell <Fields>(cellsdata, k_Rcell_source, k_Rcell_destination);
-                
-        //        for (int i_cell_destination = 0; i_cell_destination < cellsdata.N_ghostlayers; i_cell_destination++)
-        //        {
-        //            int i_source = (meshdata.Ni - 1) + i_cell_destination;
-				    //int k_cell_source = Cell_index(i_source, j_cell, cellsdata.Nitotal);
-        //            int k_cell_destination = Cell_index(i_cell_destination, j_cell, cellsdata.Nitotal);
-        //            copy_cell <Fields>(cellsdata, k_cell_source, k_cell_destination);
-        //        }
-        //        for (int i_cell_destination = (cellsdata.Nitotal-1)-cellsdata.N_ghostlayers; i_cell_destination < cellsdata.Nitotal-1; i_cell_destination++)
-        //        {
-        //            int i_source = i_cell_destination - (meshdata.Ni - 1);
-        //            int k_cell_source = Cell_index(i_source, j_cell, cellsdata.Nitotal);
-        //            int k_cell_destination = Cell_index(i_cell_destination, j_cell, cellsdata.Nitotal);
-        //            copy_cell <Fields>(cellsdata, k_cell_source, k_cell_destination);
-        //        }
+                copy_cell <Fields>(cellsdata, k_Rcell_source, k_Rcell_destination); 
             });
-            Kokkos::fence();
         }
 		
         template<typename ExecSpace, typename T>
@@ -76,11 +60,13 @@ namespace Solver::CellOps
                 cellsdata.Momentum_v_old(k) = init_data.rho_inf_ * init_data.velocity_v_inf_;
                 cellsdata.E_old(k) = 1.0f / (init_data.gamma_ - 1.0f) + 0.5f * init_data.gamma_*init_data.Mach_inf_*init_data.Mach_inf_;
             });
-            Kokkos::fence();
         }
 
         template<typename ExecSpace, typename T>
-        void ApplyPenetrationConditions(CellsData<T> cellsdata);
+        void ApplyNonPenetrationConditions(CellsData<T> cellsdata)
+        {
+            /*Kokkos::parallel_for("NonPenetrationConditions", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_i_mesh*/
+        }
 
         /**
         * Evaluates the geometrical data for a given cell.
