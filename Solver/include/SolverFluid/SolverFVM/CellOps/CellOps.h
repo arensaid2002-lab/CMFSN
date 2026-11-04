@@ -29,24 +29,39 @@ namespace Solver::CellOps
         template <typename ExecSpace, CellCopyFields Fields = CellCopyFields::All, typename T>
         void ApplyPeriodicity(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata)
         {
-            Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, meshdata.Nj-1), KOKKOS_LAMBDA(int j)
+            Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_ghostlayers*(cellsdata.Nj-1)), KOKKOS_LAMBDA(int K_g)
             {
+				int i_Ldestination = K_g % cellsdata.N_ghostlayers;
+				int j_Ldestination = K_g / cellsdata.N_ghostlayers;
+			    int i_Lsource = i_Ldestination + (cellsdata.Ni-1);
+                int j_Lsource = j_Ldestination;
+                int k_Lcell_source = Cell_index(i_Lsource, j_Lsource, cellsdata.Nitotal);
+                int k_Lcell_destination = Cell_index(i_Ldestination, j_Ldestination, cellsdata.Nitotal);
+				copy_cell <Fields>(cellsdata, k_Lcell_source, k_Lcell_destination);
 
-			    int j_cell = j + cellsdata.N_ghostlayers;
-                for (int i_cell_destination = 0; i_cell_destination < cellsdata.N_ghostlayers; i_cell_destination++)
-                {
-                    int i_source = (meshdata.Ni - 1) + i_cell_destination;
-				    int k_cell_source = Cell_index(i_source, j_cell, cellsdata.Nitotal);
-                    int k_cell_destination = Cell_index(i_cell_destination, j_cell, cellsdata.Nitotal);
-                    copy_cell <Fields>(cellsdata, k_cell_source, k_cell_destination);
-                }
-                for (int i_cell_destination = (cellsdata.Nitotal-1)-cellsdata.N_ghostlayers; i_cell_destination < cellsdata.Nitotal-1; i_cell_destination++)
-                {
-                    int i_source = i_cell_destination - (meshdata.Ni - 1);
-                    int k_cell_source = Cell_index(i_source, j_cell, cellsdata.Nitotal);
-                    int k_cell_destination = Cell_index(i_cell_destination, j_cell, cellsdata.Nitotal);
-                    copy_cell <Fields>(cellsdata, k_cell_source, k_cell_destination);
-                }
+                int i_Rsource = K_g % cellsdata.N_ghostlayers + cellsdata.N_ghostlayers;
+				int j_Rsource = K_g / cellsdata.N_ghostlayers;
+				int i_Rdestination = i_Rsource + (meshdata.Ni - 1);
+				int j_Rdestination = j_Rsource;
+                
+                int k_Rcell_source = Cell_index(i_Rsource, j_Rsource, cellsdata.Nitotal);
+                int k_Rcell_destination = Cell_index(i_Rdestination, j_Rdestination, cellsdata.Nitotal);
+                copy_cell <Fields>(cellsdata, k_Rcell_source, k_Rcell_destination);
+                
+        //        for (int i_cell_destination = 0; i_cell_destination < cellsdata.N_ghostlayers; i_cell_destination++)
+        //        {
+        //            int i_source = (meshdata.Ni - 1) + i_cell_destination;
+				    //int k_cell_source = Cell_index(i_source, j_cell, cellsdata.Nitotal);
+        //            int k_cell_destination = Cell_index(i_cell_destination, j_cell, cellsdata.Nitotal);
+        //            copy_cell <Fields>(cellsdata, k_cell_source, k_cell_destination);
+        //        }
+        //        for (int i_cell_destination = (cellsdata.Nitotal-1)-cellsdata.N_ghostlayers; i_cell_destination < cellsdata.Nitotal-1; i_cell_destination++)
+        //        {
+        //            int i_source = i_cell_destination - (meshdata.Ni - 1);
+        //            int k_cell_source = Cell_index(i_source, j_cell, cellsdata.Nitotal);
+        //            int k_cell_destination = Cell_index(i_cell_destination, j_cell, cellsdata.Nitotal);
+        //            copy_cell <Fields>(cellsdata, k_cell_source, k_cell_destination);
+        //        }
             });
             Kokkos::fence();
         }
