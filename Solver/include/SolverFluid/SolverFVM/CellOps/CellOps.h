@@ -32,7 +32,7 @@ namespace Solver::CellOps
             Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_ghostlayers*(cellsdata.Nj_mesh-1)), KOKKOS_LAMBDA(int K_g)
             {
 				int i_Ldestination = K_g % cellsdata.N_ghostlayers;
-				int j_Ldestination = K_g / cellsdata.N_ghostlayers;
+				int j_Ldestination = K_g / cellsdata.N_ghostlayers + cellsdata.N_ghostlayers;
 			    int i_Lsource = i_Ldestination + (cellsdata.Ni_mesh -1);
                 int j_Lsource = j_Ldestination;
                 int k_Lcell_source = Cell_index(i_Lsource, j_Lsource, cellsdata.Nitotal);
@@ -40,7 +40,7 @@ namespace Solver::CellOps
 				copy_cell <Fields>(cellsdata, k_Lcell_source, k_Lcell_destination);
 
                 int i_Rsource = K_g % cellsdata.N_ghostlayers + cellsdata.N_ghostlayers;
-				int j_Rsource = K_g / cellsdata.N_ghostlayers;
+				int j_Rsource = K_g / cellsdata.N_ghostlayers + cellsdata.N_ghostlayers;
 				int i_Rdestination = i_Rsource + (cellsdata.Ni_mesh - 1);
 				int j_Rdestination = j_Rsource;
                 
