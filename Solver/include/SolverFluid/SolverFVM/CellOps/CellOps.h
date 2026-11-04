@@ -26,40 +26,6 @@ namespace Solver::CellOps
         KOKKOS_INLINE_FUNCTION
         int Cell_index(int i, int j, int Ni) {return i + (Ni-1)*j;}
 
-        template <typename T, std::size_t N, DataFields Fields = DataFields::Velocity>
-        KOKKOS_FUNCTION
-        Kokkos::Array<T, N> extract_DataField_toArray(CellsData<T> cellsdata, int k, int direction = 0)
-        {
-            if constexpr (Fields == DataFields::Velocity)
-            {
-                N = 2; // size of velocity vector
-                Kokkos::Array<T, N> Velocity = {cellsdata.velocity_u(k), cellsdata.velocity_v(k)};
-                return Velocity;
-            }
-            else if constexpr (Fields == DataFields::NormalUnitVector)
-            {
-                N = 2; // size of normal vector
-                Kokkos::Array<T, N> Normals = {cellsdata.Normals(k, direction, 0), cellsdata.Normals(k, direction, 1)};
-                return Normals;
-            }
-            else if constexpr (Fields == DataFields::Fluxes)
-            {
-                N = 4; // size of flux vector
-                Kokkos::Array<T, N> Fluxes = {cellsdata.Flux_mass(k, direction), cellsdata.Flux_Momentum_u(k, direction), cellsdata.Flux_Momentum_v(k, direction), cellsdata.Flux_E(k, direction)};
-                return Fluxes;
-            }
-            else if constexpr (Fields == DataFields::Conservative)
-            {
-                N = 4; // size of Conservative vector
-                Kokkos::Array<T, N> Conservative = {cellsdata.rho_old(k), cellsdata.Momentum_u_old(k), cellsdata.Momentum_v_old(k), cellsdata.E_old(k) };
-                return Conservative;
-            }
-            else
-            {
-                static_assert(Fields == DataFields::Velocity|| Fields == DataFields::NormalUnitVector || Fields == DataFields::Fluxes || Fields == DataFields::Conservative, "Invalid data field specified");
-            }
-        }
-
         template <typename ExecSpace, CellCopyFields Fields = CellCopyFields::All, typename T>
         void ApplyPeriodicity(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata)
         {
@@ -200,31 +166,31 @@ namespace Solver::CellOps
             Kokkos::fence();
         }
         
-        template <typename T, std::size_t N, DataFields Fields = DataFields::Velocity>
+        template <typename T, DataFields Fields = DataFields::Velocity>
         KOKKOS_FUNCTION
-        Kokkos::Array<T, N> extract_DataField_toArray(CellsData<T> cellsdata, int k, int direction = 0)
+        auto extract_DataField_toArray(CellsData<T> cellsdata, int k, int direction = 0)
         {
             if constexpr (Fields == DataFields::Velocity)
             {
-                N = 2; // size of velocity vector
+                int N = 2; // size of velocity vector
                 Kokkos::Array<T, N> Velocity = { cellsdata.velocity_u(k), cellsdata.velocity_v(k) };
                 return Velocity;
             }
             else if constexpr (Fields == DataFields::NormalUnitVector)
             {
-                N = 2; // size of normal vector
+                int N = 2; // size of normal vector
                 Kokkos::Array<T, N> Normals = { cellsdata.Normals(k, direction, 0), cellsdata.Normals(k, direction, 1) };
                 return Normals;
             }
             else if constexpr (Fields == DataFields::Fluxes)
             {
-                N = 4; // size of flux vector
+                int N = 4; // size of flux vector
                 Kokkos::Array<T, N> Fluxes = { cellsdata.Flux_mass(k, direction), cellsdata.Flux_Momentum_u(k, direction), cellsdata.Flux_Momentum_v(k, direction), cellsdata.Flux_E(k, direction) };
                 return Fluxes;
             }
             else if constexpr (Fields == DataFields::Conservative)
             {
-                N = 4; // size of Conservative vector
+                int N = 4; // size of Conservative vector
                 Kokkos::Array<T, N> Conservative = { cellsdata.rho_old(k), cellsdata.Momentum_u_old(k), cellsdata.Momentum_v_old(k), cellsdata.E_old(k) };
                 return Conservative;
             }
@@ -233,5 +199,4 @@ namespace Solver::CellOps
                 static_assert(Fields == DataFields::Velocity || Fields == DataFields::NormalUnitVector || Fields == DataFields::Fluxes || Fields == DataFields::Conservative, "Invalid data field specified");
             }
         }
-
 }
