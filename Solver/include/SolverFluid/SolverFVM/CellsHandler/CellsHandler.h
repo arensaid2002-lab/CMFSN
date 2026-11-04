@@ -9,11 +9,12 @@ namespace Solver
         class CellsHandler
         {
             public:
-                CellsHandler(T Mach_inf, T gamma, T alpha,int N_GhostLayers, const MeshData_Structured<T>& MeshData);
+                CellsHandler(T Mach_inf, T gamma, T alpha,int N_GhostLayers, const MeshData_Structured<T>& meshdata);
                 ~CellsHandler() = default;
 
                 void initialize_cells();
                 void initialize_ghosts(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata);
+                
 
 			    CellsData<T>& get_CellsData() const { return CellsData_; }
      

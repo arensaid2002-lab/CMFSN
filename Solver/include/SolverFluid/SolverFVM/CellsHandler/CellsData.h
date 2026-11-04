@@ -21,11 +21,11 @@ namespace Solver
 			N_i_mesh(meshdata.Ni), N_j_mesh(meshdata.Nj), N_edges(meshdata.N_edges), N_cells_mesh(meshdata.N_Cells)
         {
             N_ghostlayers   = N_ghostlayers_;
-            Nitotal         = MeshData.Ni + 2 * N_ghostlayers;
-            Njtotal         = MeshData.Nj + 2 * N_ghostlayers;
+            Nitotal         = meshdata.Ni + 2 * N_ghostlayers;
+            Njtotal         = meshdata.Nj + 2 * N_ghostlayers;
             N_cells_total   = (Nitotal - 1) * (Njtotal - 1);
 
-            Normals     = View3D<T>("Normals", N_cells_total, MeshData.N_edges, 2);
+            Normals     = View3D<T>("Normals", N_cells_total, meshdata.N_edges, 2);
             Cell_Areas  = View1D<T>("Cell_Areas", N_cells_total);
 
             velocity_u      = View1D<T>("velocity_u", N_cells_total);
@@ -40,11 +40,11 @@ namespace Solver
             Momentum_v_new  = View1D<T>("Momentum_v_new", N_cells_total);
             E_new           = View1D<T>("E_new", N_cells_total);
 
-            Flux_mass       = View2D<T>("Flux_mass", N_cells_total, MeshData.N_edges);
-            Flux_Momentum_u = View2D<T>("Flux_Momentum_u", N_cells_total, MeshData.N_edges);
-            Flux_Momentum_v = View2D<T>("Flux_Momentum_v", N_cells_total, MeshData.N_edges);
-            Flux_E          = View2D<T>("Flux_E", N_cells_total, MeshData.N_edges);
-            D               = View2D<T>("D", N_cells_total, MeshData.N_edges);
+            Flux_mass       = View2D<T>("Flux_mass", N_cells_total, meshdata.N_edges);
+            Flux_Momentum_u = View2D<T>("Flux_Momentum_u", N_cells_total, meshdata.N_edges);
+            Flux_Momentum_v = View2D<T>("Flux_Momentum_v", N_cells_total, meshdata.N_edges);
+            Flux_E          = View2D<T>("Flux_E", N_cells_total, meshdata.N_edges);
+            D               = View2D<T>("D", N_cells_total, meshdata.N_edges);
         }
         View1D<T> Cell_Areas;
         View1D<T> velocity_u, velocity_v, pressure;

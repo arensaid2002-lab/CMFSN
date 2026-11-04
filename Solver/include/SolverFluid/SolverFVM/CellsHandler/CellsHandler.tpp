@@ -3,7 +3,7 @@
 namespace Solver
 {
         template <typename ExecSpace, typename T>
-        CellsHandler<ExecSpace, T>::CellsHandler(T Mach_inf, T gamma, T alpha, int N_GhostLayers, const MeshData_Structured<T>& MeshData) : init_data_(Mach_inf, gamma, alpha), MeshData_(MeshData), CellsData_(N_GhostLayers, MeshData)
+        CellsHandler<ExecSpace, T>::CellsHandler(T Mach_inf, T gamma, T alpha, int N_GhostLayers, const MeshData_Structured<T>& meshdata) : init_data_(Mach_inf, gamma, alpha), MeshData_(meshdata), CellsData_(N_GhostLayers, meshdata)
         {
             CellOps::eval_GeometricalData<ExecSpace>(CellsData_, MeshData_);
 			initialize_ghosts(CellsData_, MeshData_);
@@ -20,4 +20,6 @@ namespace Solver
         {
             CellOps::ApplyPeriodicity<ExecSpace>(cellsdata, meshdata);
         }
+
+        
 }

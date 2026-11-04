@@ -75,8 +75,8 @@ namespace Solver
             if constexpr (Fields == CellCopyFields::Fluxes || Fields == CellCopyFields::All)
             {
                 detail::copy_cell_views(k_source, k_destination,
-                    cellsdata.Flux_mass, cellsdata.Flux_Momentum_x,
-                    cellsdata.Flux_Momentum_y, cellsdata.Flux_E, cellsdata.D);
+                    cellsdata.Flux_mass, cellsdata.Flux_Momentum_u,
+                    cellsdata.Flux_Momentum_v, cellsdata.Flux_E, cellsdata.D);
             }
         }
 }
