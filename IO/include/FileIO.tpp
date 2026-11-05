@@ -3,6 +3,7 @@
 #include <Kokkos_Core.hpp>
 #include <iostream>
 #include <fstream>
+#include <limits>
 
 #include <MeshHandler.h>
 
@@ -11,25 +12,29 @@ using namespace Mesh;
 
 namespace IO
 {
-    template <typename T, typename MeshFileFormat>
+    template <typename T, MeshFileFormat Format>
     void Import_Mesh(string path, MeshData_Structured<T>& MeshData)
     {
         try
         {
-            fstream Meshfile(path);
+            ifstream Meshfile(path);
             if (Meshfile.is_open())
             {
-                Meshfile >> MeshData.Ni >> MeshData.Nj;
-                MeshData.N_nodes = MeshData.Ni * MeshData.Nj;
-                MeshData.N_Cells = (MeshData.Ni-1) * (MeshData.Nj-1);
+                MeshData_Structured<T> imported;
+                if (!(Meshfile >> imported.Ni >> imported.Nj) || imported.Ni < 2 || imported.Nj < 2)
+                    throw runtime_error("Invalid mesh dimensions");
+                if (imported.Ni > numeric_limits<int>::max() / imported.Nj)
+                    throw runtime_error("Mesh dimensions exceed the supported index range");
+                imported.N_nodes = imported.Ni * imported.Nj;
+                imported.N_Cells = (imported.Ni-1) * (imported.Nj-1);
  
-                Kokkos::View<T*, Kokkos::LayoutLeft > X("X", MeshData.N_nodes);
-                Kokkos::View<T*, Kokkos::LayoutLeft > Y("X", MeshData.N_nodes);
+                Kokkos::View<T*, Kokkos::LayoutLeft > X("X", imported.N_nodes);
+                Kokkos::View<T*, Kokkos::LayoutLeft > Y("Y", imported.N_nodes);
 
                 auto X_host = Kokkos::create_mirror_view(X);
                 auto Y_host = Kokkos::create_mirror_view(Y);
 
-                for(int i = 0; i < MeshData.N_nodes; i++)
+                for(int i = 0; i < imported.N_nodes; i++)
                 {
                     if(!(Meshfile >> X_host(i)))
                     {
@@ -37,7 +42,7 @@ namespace IO
                     }
                 }
 
-                for(int i = 0; i < MeshData.N_nodes; i++)
+                for(int i = 0; i < imported.N_nodes; i++)
                 {
                     if(!(Meshfile >> Y_host(i)))
                     {
@@ -47,8 +52,9 @@ namespace IO
                 Kokkos::deep_copy(X, X_host);
                 Kokkos::deep_copy(Y, Y_host);
 
-                MeshData.X = X;
-                MeshData.Y = Y; 
+                imported.X = X;
+                imported.Y = Y; 
+                MeshData = imported;
             }
             else
             {
@@ -59,6 +65,7 @@ namespace IO
         catch (exception& Error)
         {
             cerr << Error.what() << endl;
+            throw;
         }
     }
     

@@ -8,7 +8,9 @@ target_sources(Solver PRIVATE
     include/SolverFluid/SolverFVM/CellOps/CellOps.h
     include/SolverFluid/SolverFVM/CellOps/CellCopy.h
     include/SolverFluid/SolverFVM/CellsHandler/CellsHandler.tpp
-    include/SolverFluid/SolverFVM/NumOps/ArrayOps.h)
+    include/SolverFluid/SolverFVM/NumOps/ArrayOps.h
+    include/SolverFluid/SolverFVM/NumOps/NumFunctions.h
+)
 
 set_source_files_properties(
     include/SolverFluid/SolverFVM/SolverFVM.tpp

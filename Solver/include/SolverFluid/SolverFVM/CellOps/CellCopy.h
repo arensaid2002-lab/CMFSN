@@ -10,6 +10,7 @@ namespace Solver
         OldState,
         NewState,
         States,
+		velocity,
         Geometry,
         Fluxes,
         All
@@ -67,6 +68,11 @@ namespace Solver
                 detail::copy_cell_views(k_source, k_destination,
                     cellsdata.rho_new, cellsdata.Momentum_u_new, cellsdata.Momentum_v_new, cellsdata.E_new);
             }
+			if constexpr (Fields == CellCopyFields::velocity || Fields == CellCopyFields::OldState || Fields == CellCopyFields::NewState || Fields == CellCopyFields::States || Fields == CellCopyFields::All)
+			{
+				detail::copy_cell_views(k_source, k_destination,
+					cellsdata.velocity_u, cellsdata.velocity_v);
+			}
             if constexpr (Fields == CellCopyFields::Geometry || Fields == CellCopyFields::All)
             {
                 detail::copy_cell_views(k_source, k_destination,

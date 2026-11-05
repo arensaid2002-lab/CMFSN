@@ -10,6 +10,18 @@ namespace Solver::NumOps
     #pragma region Array_Operations
     template <typename T, size_t N>
     KOKKOS_INLINE_FUNCTION
+    Kokkos::Array<T, N> operator+=(const Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
+    {
+        Kokkos::Array<T, N> C{};
+
+        for (size_t i = 0; i < N; i++)
+        {
+            A[i] = A[i] + B[i];
+        }
+        return C;
+    }
+    template <typename T, size_t N>
+    KOKKOS_INLINE_FUNCTION
     Kokkos::Array<T, N> operator+(const Kokkos::Array<T, N>& A,const Kokkos::Array<T, N>& B)
     {
         Kokkos::Array<T, N> C{};
@@ -173,12 +185,11 @@ namespace Solver::NumOps
     #pragma endregion
 
     #pragma region ArrayOps
-    template <typename S, size_t N>
-    requires std::is_arithmetic_v<S>
+    template <typename T, size_t N>
     KOKKOS_INLINE_FUNCTION
-    S dot(const Kokkos::Array<S, N>& A, const Kokkos::Array<S, N>& B)
+    T dot(const Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
     {
-        S dot_product{};
+        T dot_product = T{ 0 };
 
         for (size_t i = 0; i < N; i++)
         {

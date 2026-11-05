@@ -18,7 +18,7 @@ namespace Solver
         template<typename ExecSpace, typename T>
         void CellsHandler<ExecSpace, T>::initialize_ghosts(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata)
         {
-            CellOps::ApplyPeriodicity<ExecSpace>(cellsdata, meshdata);
+            CellOps::ApplyPeriodicity<ExecSpace>(cellsdata);
         }
 
         

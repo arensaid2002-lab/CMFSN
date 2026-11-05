@@ -20,12 +20,15 @@ namespace Solver
 		CellsData(int N_ghostlayers_, const MeshData_Structured<T>& meshdata) :
 			Ni_mesh(meshdata.Ni), Nj_mesh(meshdata.Nj), N_edges(meshdata.N_edges), N_cells_mesh(meshdata.N_Cells)
         {
+            Ni_cells = meshdata.Ni - 1;
+            Nj_cells = meshdata.Nj - 1;
+
             N_ghostlayers   = N_ghostlayers_;
             Nitotal         = meshdata.Ni + 2 * N_ghostlayers;
             Njtotal         = meshdata.Nj + 2 * N_ghostlayers;
             N_cells_total   = (Nitotal - 1) * (Njtotal - 1);
 
-            Normals     = View3D<T>("Normals", N_cells_total, meshdata.N_edges, 2);
+            Normals     = View3D<T>("Normals", N_cells_total, meshdata.N_edges, 3); // {nx, ny, norm}
             Cell_Areas  = View1D<T>("Cell_Areas", N_cells_total);
 
             velocity_u      = View1D<T>("velocity_u", N_cells_total);
@@ -52,7 +55,7 @@ namespace Solver
         View1D<T> rho_new, Momentum_u_new, Momentum_v_new, E_new;
         View2D<T> Flux_mass, Flux_Momentum_u, Flux_Momentum_v, Flux_E, D;
         View3D<T> Normals;
-
+        int Ni_cells, Nj_cells;
         int Ni_mesh, Nj_mesh, N_edges, N_cells_mesh;
         int N_cells_total, Nitotal, Njtotal, N_ghostlayers;
     };
@@ -63,12 +66,13 @@ namespace Solver
         initialization_data(T Mach_inf, T gamma, T alpha)
         {
             gamma_ = gamma;
+            c_inf = sqrt(gamma);
             Mach_inf_ = Mach_inf;
             alpha_ = alpha; // Radians
             velocity_u_inf = Mach_inf * sqrt(gamma_) * cos(alpha_);
             velocity_v_inf = Mach_inf * sqrt(gamma_) * sin(alpha_);
         }
-        T rho_inf_{ 1.0f }, P_inf_{ 1.0f }, gamma_, Mach_inf_, velocity_u_inf, velocity_v_inf, alpha_;
+        T rho_inf{ 1.0f }, P_inf{ 1.0f }, c_inf, gamma_, Mach_inf_, velocity_u_inf, velocity_v_inf, alpha_;
     };
 
 }

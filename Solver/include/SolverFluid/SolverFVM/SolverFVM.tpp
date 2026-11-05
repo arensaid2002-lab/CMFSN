@@ -7,7 +7,7 @@
 namespace Solver
 {
 	template <typename T, SolverTypes SType>
-	SolverFVM<T, SType>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : cells_handler(T Mach_inf, T gamma, T alpha, N_gLayer, Mesh_Euler)
+	SolverFVM<T, SType>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : cells_handler(Mach_inf, gamma, alpha, N_gLayer, Mesh_Euler)
 	{
 
 	}

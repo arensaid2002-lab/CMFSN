@@ -16,12 +16,12 @@ namespace Solver
                 void initialize_ghosts(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata);
                 
 
-			    CellsData<T>& get_CellsData() const { return CellsData_; }
+			    CellsData<T>& get_CellsData() { return CellsData_; }
      
             private:
+                CellsData<T> CellsData_;
                 initialization_data<T> init_data_;
                 const MeshData_Structured<T>& MeshData_;
-                CellsData<T> CellsData_;
         };
 }
 #include "CellsHandler/CellsHandler.tpp"

@@ -7,7 +7,7 @@ using namespace std;
 using namespace Mesh;
 namespace IO
 {
-    template <typename T, typename MeshFileFormat Format = MeshFileFormat::Plot3D>
+    template <typename T, MeshFileFormat Format = MeshFileFormat::Plot3D>
     void Import_Mesh(string path, MeshData_Structured<T>& MeshData);
 }
 #include "FileIO.tpp"
