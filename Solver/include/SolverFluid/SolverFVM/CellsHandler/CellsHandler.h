@@ -13,7 +13,7 @@ namespace Solver
                 ~CellsHandler() = default;
 
                 void initialize_cells();
-                void initialize_ghosts(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata);
+                void initialize_ghosts();
                 
 
 			    CellsData<T>& get_CellsData() { return CellsData_; }

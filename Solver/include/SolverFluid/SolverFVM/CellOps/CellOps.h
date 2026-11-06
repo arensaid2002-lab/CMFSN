@@ -18,6 +18,8 @@ namespace Solver::CellOps
         Velocity,
         Fluxes,
         #pragma endregion
+        
+
         #pragma region Geometrical Data Fields
         NormalUnitVector,
         EdgeLength
@@ -41,7 +43,10 @@ namespace Solver::CellOps
 			}
             else if constexpr (Fields == DataFields::Velocity)
             {    
-                Kokkos::Array<T, 2> Velocity = { cellsdata.velocity_u(k), cellsdata.velocity_v(k) };
+                Kokkos::Array<T, 2> Velocity = {
+                    cellsdata.Momentum_u_old(k) / cellsdata.rho_old(k),
+                    cellsdata.Momentum_v_old(k) / cellsdata.rho_old(k)
+                };
                 return Velocity;
             }
             else if constexpr (Fields == DataFields::NormalUnitVector)
@@ -66,7 +71,7 @@ namespace Solver::CellOps
         }
         template <typename T, DataFields Fields = DataFields::Velocity, typename InsertData>
         KOKKOS_FUNCTION
-        void Insert_DataField(InsertData data, CellsData<T> cellsdata, int k, int direction = 0)
+        void Update_DataField(InsertData data, CellsData<T> cellsdata, int k, int direction = 0)
         {
             if constexpr (Fields == DataFields::EdgeLength && std::is_arithmetic_v<InsertData>)
             {
@@ -74,8 +79,12 @@ namespace Solver::CellOps
             }
             else if constexpr (Fields == DataFields::Velocity && (std::is_same_v <InsertData, Kokkos::Array<T, 2>>))
             {
-				cellsdata.velocity_u(k) = data[0];
-				cellsdata.velocity_v(k) = data[1];
+                //Here Energy update is omitted, it is assumed the velocity magnitude remains constant
+                cellsdata.velocity_u(k) = data[0];
+                cellsdata.velocity_v(k) = data[1];
+
+                cellsdata.Momentum_u_old(k) = cellsdata.rho_old(k) * data[0];
+                cellsdata.Momentum_v_old(k) = cellsdata.rho_old(k) * data[1]; 
             }
             else if constexpr (Fields == DataFields::NormalUnitVector && (std::is_same_v <InsertData, Kokkos::Array<T, 2>>))
             {
@@ -117,22 +126,12 @@ namespace Solver::CellOps
                 int i_g = K_g % cellsdata.N_ghostlayers;
                 int j_g = K_g / cellsdata.N_ghostlayers;
 
-				int i_Ldestination = i_g;
-				int j_Ldestination = j_g + cellsdata.N_ghostlayers;
-			    int i_Lsource = i_Ldestination + cellsdata.Ni_cells;
-                int j_Lsource = j_Ldestination;
+                const int k_Lcell_destination = Cell_index(i_g, j_g + cellsdata.N_ghostlayers, cellsdata.Nitotal);
+                const int k_Lcell_source = k_Lcell_destination + cellsdata.Ni_cells;
+                const int k_Rcell_source = k_Lcell_destination + cellsdata.N_ghostlayers;
+                const int k_Rcell_destination = k_Rcell_source + cellsdata.Ni_cells;
 
-                int k_Lcell_source = Cell_index(i_Lsource, j_Lsource, cellsdata.Nitotal);
-                int k_Lcell_destination = Cell_index(i_Ldestination, j_Ldestination, cellsdata.Nitotal);
-				copy_cell <Fields>(cellsdata, k_Lcell_source, k_Lcell_destination);
-
-                int i_Rsource = i_g + cellsdata.N_ghostlayers;
-				int j_Rsource = j_g + cellsdata.N_ghostlayers;
-				int i_Rdestination = i_Rsource + cellsdata.Ni_cells;
-				int j_Rdestination = j_Rsource;
-                
-                int k_Rcell_source = Cell_index(i_Rsource, j_Rsource, cellsdata.Nitotal);
-                int k_Rcell_destination = Cell_index(i_Rdestination, j_Rdestination, cellsdata.Nitotal);
+                copy_cell <Fields>(cellsdata, k_Lcell_source, k_Lcell_destination);
                 copy_cell <Fields>(cellsdata, k_Rcell_source, k_Rcell_destination); 
             });
         }
@@ -159,17 +158,11 @@ namespace Solver::CellOps
                 int i_g = k_g % cellsdata.Ni_cells;
                 int j_g = k_g / cellsdata.Ni_cells;
 
-                int i_source = i_g + cellsdata.N_ghostlayers;
-                int j_source = 2 * cellsdata.N_ghostlayers - 1 - j_g;
-
-                int i_destination = i_source;
-                int& j_destination = j_g;
-
-
-                int k_source = Cell_index(i_source, j_source, cellsdata.Nitotal);
-                int k_destination = Cell_index(i_destination, j_destination, cellsdata.Nitotal);
-				int k_wall = Cell_index(i_destination, cellsdata.N_ghostlayers, cellsdata.Nitotal);
-                int& k_ghost = k_destination;
+                const int stride = cellsdata.Nitotal - 1;
+                const int k_wall = Cell_index(i_g + cellsdata.N_ghostlayers, cellsdata.N_ghostlayers, cellsdata.Nitotal);
+                const int k_source = k_wall + (cellsdata.N_ghostlayers - 1 - j_g) * stride;
+                const int k_destination = k_wall - (cellsdata.N_ghostlayers - j_g) * stride;
+                const int k_ghost = k_destination;
                 
 				//copy the old state from the source cell to the ghost cell
                 copy_cell <CellCopyFields::OldState>(cellsdata, k_source, k_destination);
@@ -178,14 +171,8 @@ namespace Solver::CellOps
                 auto ghost_normal = -1 * extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_wall, 0);
                 auto RealCell_velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_source);
                 auto GhostCell_velocity = RealCell_velocity - (T)2 * dot(RealCell_velocity, ghost_normal) * ghost_normal;
-                Insert_DataField<T, DataFields::Velocity>(GhostCell_velocity, cellsdata, k_destination);
-				
-				//update state and fluxes in the ghost cell based on the reflected velocity
-                T pressure = eval_pressure<T>(cellsdata.rho_old(k_ghost), cellsdata.E_old(k_ghost), cellsdata.velocity_u(k_ghost), cellsdata.velocity_v(k_ghost), init_data.gamma_);
-				cellsdata.Momentum_u_old(k_ghost) = cellsdata.rho_old(k_ghost) * cellsdata.velocity_u(k_ghost);
-				cellsdata.Momentum_v_old(k_ghost) = cellsdata.rho_old(k_ghost) * cellsdata.velocity_v(k_ghost);
-				cellsdata.Flux_Momentum_u(k_ghost, 2) = ghost_normal[0] * pressure;
-				cellsdata.Flux_Momentum_v(k_ghost, 2) = ghost_normal[1] * pressure;
+                Update_DataField<T, DataFields::Velocity>(GhostCell_velocity, cellsdata, k_ghost);
+                update_Stateflux<T>(cellsdata, init_data)
             });
         }
         
@@ -199,24 +186,24 @@ namespace Solver::CellOps
             {
                 int i_cells = i_g + cellsdata.N_ghostlayers;
                 int j_Cell = cellsdata.N_ghostlayers + cellsdata.Nj_cells - 1;
-                int k_cell = Cell_index(i_cells, j_Cell, cellsdata.Nitotal);
-                
-                int j_ghost_first = j_Cell + 1;
-                int j_ghost_last = j_ghost_first + 1;
-                int k_ghost_first = Cell_index(i_cells, j_ghost_first, cellsdata.Nitotal);
-                int k_ghost_last = Cell_index(i_cells, j_ghost_last, cellsdata.Nitotal);
+
+                const int stride = cellsdata.Nitotal - 1;
+                const int k_cell = Cell_index(i_cells, j_Cell, cellsdata.Nitotal);
+                const int k_ghost_first = k_cell + stride;
+                const int k_ghost_last = k_cell + 2 * stride;
 
                 auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, 2);
                 auto V_in = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
                 auto V_inf = Kokkos::Array<T, 2>{ init_data.velocity_u_inf, init_data.velocity_v_inf };
 
-                T P_in = eval_pressure<T>(cellsdata.rho_old(k_cell), cellsdata.E_old(k_cell), V_in[0], V_in[1], init_data.gamma_);
-                T c_in = eval_sound_speed<T>(init_data.gamma_, P_in, cellsdata.rho_old(k_cell));
+                T P_in = cellsdata.Pressure(k_cell);
+                T c_in = cellsdata.SoundSpeed(k_cell);
                 auto boundary_state = eval_RiemannBoundaryState<T>(V_in, V_inf, normal, c_in, init_data.c_inf, init_data.gamma_, cellsdata.rho_old(k_cell), init_data.rho_inf);
 
                 auto V_boundary = boundary_state.first;
-                T rho_boundary = boundary_state.second.first;
-                T pressure_boundary = boundary_state.second.second;
+                auto rho_pressure = boundary_state.second;
+                T rho_boundary = rho_pressure.first;
+                T pressure_boundary = rho_pressure.second;
                 T Energy = eval_Energy<T>(rho_boundary, V_boundary[0], V_boundary[1], pressure_boundary, init_data.gamma_);
 
                 auto Cell_State = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_cell);
@@ -225,13 +212,8 @@ namespace Solver::CellOps
                 auto Ghost_State_Last = Ghost_State_First;
                 Kokkos::Array<T, 2> Ghost_Velocity = { Ghost_State_First[1] / Ghost_State_First[0], Ghost_State_First[2] / Ghost_State_First[0] };
 
-                Insert_DataField<T, DataFields::Conservative_Old>(Ghost_State_First, cellsdata, k_ghost_first);
-                Insert_DataField<T, DataFields::Velocity>(Ghost_Velocity, cellsdata, k_ghost_first);
-                if (cellsdata.N_ghostlayers > 1)
-                {
-                    Insert_DataField<T, DataFields::Conservative_Old>(Ghost_State_Last, cellsdata, k_ghost_last);
-                    Insert_DataField<T, DataFields::Velocity>(Ghost_Velocity, cellsdata, k_ghost_last);
-                }
+                Update_DataField<T, DataFields::Conservative_Old>(Ghost_State_First, cellsdata, k_ghost_first);
+                Update_DataField<T, DataFields::Conservative_Old>(Ghost_State_Last, cellsdata, k_ghost_last);
                 
             });
         }
@@ -313,10 +295,10 @@ namespace Solver::CellOps
         template <typename ExecSpace, typename T>
         void eval_GeometricalData(CellsData<T> cellsdata, const MeshData_Structured<T>& meshdata)
         {
-            Kokkos::parallel_for("eval_geometrical_data", Kokkos::RangePolicy<ExecSpace>(0, meshdata.N_Cells), KOKKOS_LAMBDA(int k_origin)
+            Kokkos::parallel_for("eval_geometrical_data", Kokkos::RangePolicy<ExecSpace>(0, meshdata.N_Cells), KOKKOS_LAMBDA(int k_mesh)
             {
-                int i = k_origin % cellsdata.Ni_cells;
-                int j = k_origin / cellsdata.Ni_cells;
+                int i = k_mesh % cellsdata.Ni_cells;
+                int j = k_mesh / cellsdata.Ni_cells;
 
                 int i_cell = i + cellsdata.N_ghostlayers;
                 int j_cell = j + cellsdata.N_ghostlayers;
@@ -334,6 +316,73 @@ namespace Solver::CellOps
             });
         }
         
+        template <typename ExecSpace, typename T>
+        void eval_DerivedFields(CellsData<T> cellsdata, const initialization_data<T>& init_data)
+        {
+            Kokkos::parallel_for("eval_DerivedFields", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh)
+            {
+                int i = k_mesh % cellsdata.Ni_cells;
+                int j = k_mesh / cellsdata.Ni_cells;
+
+                int i_cell = i + cellsdata.N_ghostlayers;
+                int j_cell = j + cellsdata.N_ghostlayers;
+                int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
+                
+                T Pressure_value = eval_pressure<T>(cellsdata.rho_old(k_cell), cellsdata.E_old(k_cell), cellsdata.velocity_u(k_cell), cellsdata.velocity_v(k_cell), init_data.gamma_);
+                T Sound_speed_value = eval_sound_speed<T>(init_data.gamma_, Pressure_value, cellsdata.rho_old(k_cell));
+
+                cellsdata.Pressure(k_cell) = Pressure_value;
+                cellsdata.SoundSpeed(k_cell) = Sound_speed_value;
+                for (int direction = 0; direction < cellsdata.N_edges; direction++)
+                {
+                    auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, direction);
+                    auto Velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell, direction);
+                    T EdgeLength = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_cell, direction);
+                    T Lambda = abs(dot(Velocity, normal)) * EdgeLength;
+                    cellsdata.Lambdas(k_cell, direction) = Lambda;
+                }
+            });
+        }
+
+
+        template <typename T>
+        KOKKOS_INLINE_FUNCTION
+        void update_Stateflux(CellsData<T> cellsdata, const initialization_data<T>& init_data,int k_cell, int direction)
+        {
+            auto velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
+            auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, direction);
+            auto Conservative_state = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_cell);
+            T Pressure = cellsdata.Pressure(k_cell);
+            T Vn = dot(velocity, normal);
+
+            Kokkos::Array<T, 4> Pressure_Energy = { 0, normal[0] * Pressure, normal[1] * Pressure, Pressure * Vn };
+            auto flux = Conservative_state * Vn + Pressure_Energy;
+            Update_DataField<T, DataFields::Fluxes>(flux, cellsdata, k_cell, direction);
+        }
+        
+        template <typename T>
+        KOKKOS_INLINE_FUNCTION
+        Kokkos::Array<T, 4> eval_Dissipation(CellsData<T> cellsdata, const initialization_data<T>& init_data, int k_cell)
+        {
+            const int stride = cellsdata.Nitotal - 1;
+            const int k_cell_0 = k_cell - stride;
+            const int k_cell_1 = k_cell + 1;
+            const int k_cell_2 = k_cell + stride;
+            const int k_cell_3 = k_cell - 1;
+
+           
+            Kokkos::Array<T, 4> Lambdas_2; 
+            Lambdas_2[0] = mean<T>(cellsdata.Lambdas(k_cell, 0), cellsdata.Lambdas(k_cell_0, 2));
+            Lambdas_2[1] = mean<T>(cellsdata.Lambdas(k_cell, 1), cellsdata.Lambdas(k_cell_1, 3));
+            Lambdas_2[2] = mean<T>(cellsdata.Lambdas(k_cell, 2), cellsdata.Lambdas(k_cell_2, 0));
+            Lambdas_2[3] = mean<T>(cellsdata.Lambdas(k_cell, 3), cellsdata.Lambdas(k_cell_3, 1));
+
+
+
+            T pressure_captor_i = cellsdata.Pressure(k_cell_0) + 
+            
+        }
+
 
 
 }

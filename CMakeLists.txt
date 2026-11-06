@@ -76,7 +76,7 @@ if(Kokkos_ENABLE_CUDA)
     )
 endif()
 
-target_link_libraries(CMFSN PRIVATE IO Mesh NumOps Solver)
+target_link_libraries(CMFSN PRIVATE IO Mesh Solver)
 
 # Forward the host C++ standard explicitly for CUDA sources. Keeping the
 # MSVC option as a separate argument also lets Visual Studio recognize it.

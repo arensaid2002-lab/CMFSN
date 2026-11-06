@@ -2,6 +2,7 @@
 #include <Kokkos_Core.hpp>
 #include <iostream>
 #include <NumOps/ArrayOps.h>
+
 namespace Solver::NumOps
 {
 	template <typename T>
@@ -51,6 +52,29 @@ namespace Solver::NumOps
 	}
 	template <typename T>
 	KOKKOS_INLINE_FUNCTION
+	T mean(const T& A, const T& B)
+	{
+		return T(0.5) * (A + B);
+	}
+	template <typename T, size_t N>
+	KOKKOS_INLINE_FUNCTION
+	T max(const Kokkos::Array<T, N>& A)
+	{
+		static_assert(N > 0, "max requires a non-empty array");
+
+		T result = A[0];
+		for (size_t i = 1; i < N; ++i)
+		{
+			if (A[i] > result)
+				result = A[i];
+		}
+		return result;
+	}
+
+
+
+	template <typename T>
+	KOKKOS_INLINE_FUNCTION
 	Kokkos::pair< Kokkos::Array<T, 2>, Kokkos::pair<T, T> > eval_RiemannBoundaryState(Kokkos::Array<T, 2> V_in, Kokkos::Array<T, 2> V_inf, Kokkos::Array<T, 2> normal, T c_in, T c_inf, T gamma, T rho_in, T rho_inf)
 	{
 		T Vn_in = dot(V_in, normal);
@@ -96,15 +120,4 @@ namespace Solver::NumOps
 		return Kokkos::make_pair(V_boundary, Kokkos::make_pair(rho_boundary, pressure_boundary));
 	}
 	
-	template <typename T>
-	KOKKOS_INLINE_FUNCTION
-	Kokkos::Array<T, 4> eval_fluxes(CellsData<T> cellsdata, int k_cell)
-	{
-		T Pressure = eval_pressure();
-		Kokkos::Array<T, 4> Flux;
-		for (int direction = 0; direction < 4; direction++)
-		{
-			Flux = { cellsdata.rho_old(k_cell), cellsdata.rho_old(k_cell) * cellsdata.velocity_u(k_cell), cellsdata.rho_old(k_cell) * cellsdata.velocity_v(k_cell), cellsdata.rho_old }
-		}
-	}
 }

@@ -10,15 +10,13 @@ namespace Solver::NumOps
     #pragma region Array_Operations
     template <typename T, size_t N>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator+=(const Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
+    Kokkos::Array<T, N>& operator+=(Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
     {
-        Kokkos::Array<T, N> C{};
-
         for (size_t i = 0; i < N; i++)
         {
             A[i] = A[i] + B[i];
         }
-        return C;
+        return A;
     }
     template <typename T, size_t N>
     KOKKOS_INLINE_FUNCTION
