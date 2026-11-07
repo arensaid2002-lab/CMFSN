@@ -75,7 +75,7 @@ namespace Solver::NumOps
     template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator+(const Kokkos::Array<T, N>& A, const S& b)
+    Kokkos::Array<T, N> operator+(const Kokkos::Array<T, N>& A, S b)
     {
         Kokkos::Array<T, N> C;
 
@@ -88,7 +88,7 @@ namespace Solver::NumOps
     template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator+(const S& b, const Kokkos::Array<T, N>& A)
+    Kokkos::Array<T, N> operator+(S b, const Kokkos::Array<T, N>& A)
     {
         Kokkos::Array<T, N> C;
 
@@ -102,7 +102,7 @@ namespace Solver::NumOps
     template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator-(const Kokkos::Array<T, N>& A, const S& b)
+    Kokkos::Array<T, N> operator-(const Kokkos::Array<T, N>& A, S b)
     {
         Kokkos::Array<T, N> C;
 
@@ -115,7 +115,7 @@ namespace Solver::NumOps
     template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator-(const S& b, const Kokkos::Array<T, N>& A)
+    Kokkos::Array<T, N> operator-(S b, const Kokkos::Array<T, N>& A)
     {
         Kokkos::Array<T, N> C;
 
@@ -129,7 +129,7 @@ namespace Solver::NumOps
     template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator *(const Kokkos::Array<T, N>& A, const S& b)
+    Kokkos::Array<T, N> operator *(const Kokkos::Array<T, N>& A, S b)
     {
         Kokkos::Array<T, N> C;
 
@@ -142,7 +142,7 @@ namespace Solver::NumOps
     template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator *(const S& b, const Kokkos::Array<T, N>& A)
+    Kokkos::Array<T, N> operator *(S b, const Kokkos::Array<T, N>& A)
     {
         Kokkos::Array<T, N> C;
 
@@ -156,7 +156,7 @@ namespace Solver::NumOps
     template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator/(const Kokkos::Array<T, N>& A, const S& b)
+    Kokkos::Array<T, N> operator/(const Kokkos::Array<T, N>& A, S b)
     {
         Kokkos::Array<T, N> C;
 
@@ -170,7 +170,7 @@ namespace Solver::NumOps
     template <typename T, typename S, size_t N>
     requires std::is_arithmetic_v<S>
     KOKKOS_INLINE_FUNCTION
-    Kokkos::Array<T, N> operator/(const S& b, const Kokkos::Array<T, N>& A)
+    Kokkos::Array<T, N> operator/(S b, const Kokkos::Array<T, N>& A)
     {
         Kokkos::Array<T, N> C;
 

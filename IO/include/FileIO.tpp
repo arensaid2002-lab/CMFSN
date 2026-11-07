@@ -13,7 +13,7 @@ using namespace Mesh;
 namespace IO
 {
     template <typename T, MeshFileFormat Format>
-    void Import_Mesh(string path, MeshData_Structured<T>& MeshData)
+    void Import_Mesh(const string& path, MeshData_Structured<T>& MeshData)
     {
         try
         {
@@ -62,7 +62,7 @@ namespace IO
             }
             Meshfile.close();
         }
-        catch (exception& Error)
+        catch (const exception& Error)
         {
             cerr << Error.what() << endl;
             throw;

@@ -75,8 +75,13 @@ namespace Solver::NumOps
 
 	template <typename T>
 	KOKKOS_INLINE_FUNCTION
-	Kokkos::pair< Kokkos::Array<T, 2>, Kokkos::pair<T, T> > eval_RiemannBoundaryState(Kokkos::Array<T, 2> V_in, Kokkos::Array<T, 2> V_inf, Kokkos::Array<T, 2> normal, T c_in, T c_inf, T gamma, T rho_in, T rho_inf)
+	Kokkos::Array<T, 4> eval_RiemannBoundaryState(Kokkos::Array<T, 2> V_in, Kokkos::Array<T, 2> V_inf, Kokkos::Array<T, 2> normal, T c_in, T c_inf, T gamma, T rho_in, T rho_inf)
 	{
+
+		const auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, 2);
+
+		const auto V_in = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
+		const auto V_inf = Kokkos::Array<T, 2>{ init_data.velocity_u_inf, init_data.velocity_v_inf };
 		T Vn_in = dot(V_in, normal);
 		T Vn_inf = dot(V_inf, normal);
 

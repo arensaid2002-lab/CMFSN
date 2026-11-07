@@ -20,7 +20,7 @@ int main(int argc, char* argv[])
     IO::Import_Mesh<T, MeshFileFormat::Plot3D>(path, MeshData);
     
     Solver::CellsHandler<Kokkos::DefaultExecutionSpace, T> cells_handler(T{1}, T(1.4), T{2}, 2, MeshData);
-	auto cellsData = cells_handler.get_CellsData();
+	const auto& cellsData = cells_handler.get_CellsData();
     const auto Normals = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, cellsData.Normals);
     for (int direction = 0; direction < 4; direction++)
     {

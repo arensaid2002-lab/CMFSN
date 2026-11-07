@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MeshFormat.h"
+#include "NumOps/NumFunctions.h"
 
 using namespace std;
 using namespace Mesh;
@@ -67,16 +68,18 @@ namespace Solver
     template <typename T = float>
     struct initialization_data
     {
-        initialization_data(T Mach_inf, T gamma, T alpha)
+        initialization_data(T Mach_inf, T gamma, T alpha) : gamma(gamma), Mach_inf(Mach_inf), alpha(alpha)
         {
-            gamma_ = gamma;
-            c_inf = sqrt(gamma);
-            Mach_inf_ = Mach_inf;
-            alpha_ = alpha; // Radians
-            velocity_u_inf = Mach_inf * sqrt(gamma_) * cos(alpha_);
-            velocity_v_inf = Mach_inf * sqrt(gamma_) * sin(alpha_);
+            c_inf = sqrt(gamma); // alpha is in radians.
+            velocity_u_inf = Mach_inf * c_inf * cos(alpha);
+            velocity_v_inf = Mach_inf * c_inf * sin(alpha);
+
+            Momentum_u_inf = rho_inf * velocity_u_inf;
+            Momentum_v_inf = rho_inf * velocity_v_inf;
+            E_inf = NumOps::eval_Energy<T>(rho_inf, velocity_u_inf, velocity_v_inf, P_inf, gamma);
         }
-        T rho_inf{ 1.0f }, P_inf{ 1.0f }, c_inf, gamma_, Mach_inf_, velocity_u_inf, velocity_v_inf, alpha_;
+        T rho_inf{ 1.0f }, P_inf{ 1.0f }, c_inf, gamma, Mach_inf, velocity_u_inf, velocity_v_inf, alpha;
+        T Momentum_u_inf, Momentum_v_inf, E_inf; // E_inf is total energy per unit volume.
     };
 
 }
