@@ -12,13 +12,13 @@ int main(int argc, char* argv[])
     try
     {
         using T = float;
-        constexpr auto TimeScheme = Solver::TimeEvolutionScheme::Steady;
+        constexpr auto TimeScheme = Solver::TimeEvolutionScheme::UnSteady;
         const T Mach_inf = T(2), gamma = T(1.4), alpha = T{0}; // alpha is in radians.
         const int N_ghostlayers = 3;
         const double final_time = argc > 2 ? std::stod(argv[2]) : 1;
         const int iterations = TimeScheme == Solver::TimeEvolutionScheme::Steady && argc > 2 ? std::stoi(argv[2]) : 100000;
-        const T CFL = argc > 3 ? T(std::stod(argv[3])) : T(2);
-        const auto default_path = std::filesystem::path(__FILE__).parent_path().parent_path() / "NACA_0012_mesh_PLOT3D_format" / "x.1";
+        const T CFL = argc > 3 ? T(std::stod(argv[3])) : T(1);
+        const auto default_path = std::filesystem::path(__FILE__).parent_path().parent_path() / "NACA_0012_mesh_PLOT3D_format" / "x.3";
         const std::string path = argc > 1 ? argv[1] : default_path.string();
         const std::filesystem::path output_root = argc > 4 ? argv[4] : "results";
         const int report_interval = argc > 5 ? std::stoi(argv[5]) : 1000;

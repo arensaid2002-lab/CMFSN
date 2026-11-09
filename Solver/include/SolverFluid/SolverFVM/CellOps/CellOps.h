@@ -575,6 +575,10 @@ namespace Solver::CellOps
             const Kokkos::Array<T, 5> Alpha = {T{1}/T{4}, T{1}/T{6}, T{3}/T{8}, T{1}/T{2}, T{1}};
             const Kokkos::Array<T, 5> Beta = {T{1}, T{0}, T(0.56), T{0}, T(0.44)};
             
+            const Kokkos::Array<T, 5> A = { T{ 0 }, -T(567301805773LL) / T(1357537059087LL), -T(2404267990393LL) / T(2016746695238LL), -T(3550918686646LL) / T(2091501179385LL), -T(1275806237668LL) / T(842570457699LL) };
+            const Kokkos::Array<T, 5> B = { T(1432997174477LL) / T(9575080441755LL), T(5161836677717LL) / T(13612068292357LL), T(1720146321549LL) / T(2090206949498LL), T(3134564353537LL) / T(4481467310338LL), T(2277821191437LL) / T(14882151754819LL) };
+            
+
 
             auto prepare_fields = [&](bool evaluate_time_step)
             {
@@ -612,6 +616,7 @@ namespace Solver::CellOps
                 {
                     if (KuntaStep == 0)
                     {
+
 						Kokkos::parallel_reduce("RungeKutta5_MinTimeStep", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh, T & local_min_time_step)
 						{
 							int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
@@ -621,40 +626,65 @@ namespace Solver::CellOps
 						}, Kokkos::Min<T>(min_time_step));
                         min_time_step = Kokkos::min(min_time_step, max_time_step);
                     }
+					
+                    
+                    Kokkos::parallel_for("RungeKutta5_CarpenterKennedyUpdateState", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh)
+                    {
+                        int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
+                        int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
+                        int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
+                        auto Fluxes_Dissipations = eval_All_FluxesDissipation<T>(cellsdata, k_cell);
+						auto G_accumulator = extract_DataField<T, DataFields::Dissipation_History>(cellsdata, k_cell);
+                        auto W_0 = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_cell);
+                        auto Fluxes = Fluxes_Dissipations.first;
+						auto Dissipations = Fluxes_Dissipations.second;
+                        auto Residual = Fluxes - Dissipations;
+						auto L = T{-1} * Residual / cellsdata.Cell_Areas(k_cell);
+                        
+						G_accumulator = A[KuntaStep] * G_accumulator + min_time_step* L;
+                        auto W_new = W_0 + B[KuntaStep] * G_accumulator;
+						Update_DataField<T, DataFields::Dissipation_History>(G_accumulator, cellsdata, k_cell);
+                        Update_DataField<T, DataFields::Conservative_New>(W_new, cellsdata, init_data, k_cell);
+
+                    });
+                }
+                if constexpr (TEScheme == TimeEvolutionScheme::Steady)
+                {
+                    const bool evaluate_dissipation = KuntaStep == 0 || KuntaStep == 2 || KuntaStep == 4;
+
+                    Kokkos::parallel_for("RungeKutta5_UpdateState", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh)
+                    {
+                        int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
+                        int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
+                        int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
+                        auto Fluxes_Dissipations = eval_All_FluxesDissipation<T>(cellsdata, k_cell, evaluate_dissipation);
+                        auto Fluxes = Fluxes_Dissipations.first;
+                        Kokkos::Array<T, 4> Dissipations;
+
+                        if (KuntaStep == 0)
+                        {
+                            Dissipations = Beta[KuntaStep] * Fluxes_Dissipations.second;
+                        }
+                        else if (evaluate_dissipation)
+                        {
+                            auto Previous_Dissipation = extract_DataField<T, DataFields::Dissipation_History>(cellsdata, k_cell);
+                            Dissipations = Beta[KuntaStep] * Fluxes_Dissipations.second + (1 - Beta[KuntaStep]) * Previous_Dissipation;
+                        }
+                        else
+                        {
+                            Dissipations = extract_DataField<T, DataFields::Dissipation_History>(cellsdata, k_cell);
+                        }
+                        Update_DataField<T, DataFields::Dissipation_History>(Dissipations, cellsdata, k_cell);
+
+                        auto Residual = Fluxes - Dissipations;
+                        Kokkos::Array<T, 4> W_0 = { cellsdata.rho_0(k_cell), cellsdata.Momentum_u_0(k_cell),cellsdata.Momentum_v_0(k_cell), cellsdata.Energy_0(k_cell) };
+                        const T time_step = TEScheme == TimeEvolutionScheme::UnSteady ? min_time_step : cellsdata.Time_Step(k_cell);
+                        const auto W_new = W_0 - Alpha[KuntaStep] * time_step * Residual / cellsdata.Cell_Areas(k_cell);
+                        Update_DataField<T, DataFields::Conservative_New>(W_new, cellsdata, init_data, k_cell);
+                    });
                 }
 
-                const bool evaluate_dissipation = KuntaStep == 0 || KuntaStep == 2 || KuntaStep == 4;
 
-                Kokkos::parallel_for("RungeKutta5_UpdateState", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh)
-                {
-                    int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
-                    int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
-                    int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
-                    auto Fluxes_Dissipations = eval_All_FluxesDissipation<T>(cellsdata, k_cell, evaluate_dissipation);
-                    auto Fluxes = Fluxes_Dissipations.first;
-                    Kokkos::Array<T, 4> Dissipations;
-
-                    if (KuntaStep == 0)
-                    {
-                        Dissipations = Beta[KuntaStep]*Fluxes_Dissipations.second;
-                    }
-                    else if (evaluate_dissipation)
-                    {
-						auto Previous_Dissipation = extract_DataField<T, DataFields::Dissipation_History>(cellsdata, k_cell);
-                        Dissipations = Beta[KuntaStep] * Fluxes_Dissipations.second + (1-Beta[KuntaStep])* Previous_Dissipation;
-                    }
-                    else
-                    {
-                        Dissipations = extract_DataField<T, DataFields::Dissipation_History>(cellsdata, k_cell);
-                    }
-                    Update_DataField<T, DataFields::Dissipation_History>(Dissipations, cellsdata, k_cell);
-
-                    auto Residual = Fluxes - Dissipations;
-                    Kokkos::Array<T, 4> W_0 = { cellsdata.rho_0(k_cell), cellsdata.Momentum_u_0(k_cell),cellsdata.Momentum_v_0(k_cell), cellsdata.Energy_0(k_cell) };
-                    const T time_step = TEScheme == TimeEvolutionScheme::UnSteady ? min_time_step : cellsdata.Time_Step(k_cell);
-                    const auto W_new = W_0 - Alpha[KuntaStep] * time_step * Residual / cellsdata.Cell_Areas(k_cell);
-                    Update_DataField<T, DataFields::Conservative_New>(W_new, cellsdata, init_data, k_cell);
-                });
                 std::swap(cellsdata.rho_new, cellsdata.rho_old);
                 std::swap(cellsdata.Momentum_u_new, cellsdata.Momentum_u_old);
                 std::swap(cellsdata.Momentum_v_new, cellsdata.Momentum_v_old);
