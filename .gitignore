@@ -3,3 +3,6 @@
 /CMakeUserPresets.json
 /.vs
 /.vscode
+/results/
+/UI/.venv/
+/UI/__pycache__/

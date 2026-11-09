@@ -50,11 +50,27 @@ namespace Solver::NumOps
 		T MachNumber = Vn / c;
 		return MachNumber;
 	}
+
+    template <typename T>
+    KOKKOS_INLINE_FUNCTION
+    T eval_Lambda(Kokkos::Array<T, 2> Velocity, Kokkos::Array<T, 2> normal, T SoundSpeed, T EdgeLength)
+    {
+        return (Kokkos::abs(dot(Velocity, normal)) + SoundSpeed) * EdgeLength;
+    }
+
 	template <typename T>
 	KOKKOS_INLINE_FUNCTION
 	T mean(const T& A, const T& B)
 	{
 		return T(0.5) * (A + B);
+	}
+	template <typename T, size_t N>
+	KOKKOS_INLINE_FUNCTION
+	Kokkos::Array<T, N> mean(const Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
+	{
+		Kokkos::Array<T, N> mean;
+		mean = 0.5 * (A + B);
+		return mean;
 	}
 	template <typename T, size_t N>
 	KOKKOS_INLINE_FUNCTION
@@ -71,58 +87,4 @@ namespace Solver::NumOps
 		return result;
 	}
 
-
-
-	template <typename T>
-	KOKKOS_INLINE_FUNCTION
-	Kokkos::Array<T, 4> eval_RiemannBoundaryState(Kokkos::Array<T, 2> V_in, Kokkos::Array<T, 2> V_inf, Kokkos::Array<T, 2> normal, T c_in, T c_inf, T gamma, T rho_in, T rho_inf)
-	{
-
-		const auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, 2);
-
-		const auto V_in = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
-		const auto V_inf = Kokkos::Array<T, 2>{ init_data.velocity_u_inf, init_data.velocity_v_inf };
-		T Vn_in = dot(V_in, normal);
-		T Vn_inf = dot(V_inf, normal);
-
-		T Mach = eval_MachNumber(Vn_in, c_in);
-		T J_plus;
-		T J_minus;
-
-		if (Mach < - 1.0)
-		{
-			J_plus = Vn_inf + 2 * c_inf / (gamma - 1.0);
-			J_minus = Vn_inf - 2 * c_inf / (gamma - 1.0);
-		}
-		else if (Mach < 1)
-		{
-			J_plus = Vn_in + 2 * c_in / (gamma - 1.0);
-			J_minus = Vn_inf - 2 * c_inf / (gamma - 1.0);
-		}
-		else
-		{
-			J_plus = Vn_in + 2 * c_in / (gamma - 1.0);
-			J_minus = Vn_in - 2 * c_in / (gamma - 1.0);
-		}
-		T Vbn = (J_plus + J_minus) / T{2};
-		T cb = (gamma - T{1}) / T{4} * (J_plus - J_minus);
-		T Entropie_k;
-		Kokkos::Array<T, 2> V_boundary;
-
-		if (Vbn > T{0})
-		{
-			Entropie_k = c_in * c_in /(gamma * Kokkos::pow(rho_in, gamma - T{1}));
-			V_boundary = V_in + (Vbn - Vn_in) * normal;
-		}
-		else
-		{
-			Entropie_k = c_inf * c_inf / (gamma * Kokkos::pow(rho_inf, gamma - T{1}));
-			V_boundary = V_inf + (Vbn - Vn_inf) * normal;
-		}
-
-		T rho_boundary = Kokkos::pow(cb * cb / (gamma * Entropie_k), T{1} / (gamma - T{1}));
-		T pressure_boundary = rho_boundary * cb * cb / gamma;
-		return Kokkos::make_pair(V_boundary, Kokkos::make_pair(rho_boundary, pressure_boundary));
-	}
-	
 }

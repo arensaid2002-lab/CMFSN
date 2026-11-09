@@ -31,6 +31,7 @@ namespace Solver
 
             Normals     = View3D<T>("Normals", N_cells_total, meshdata.N_edges, 3); // {nx, ny, norm}
             Cell_Areas  = View1D<T>("Cell_Areas", N_cells_total);
+            Time_Step = View1D<T>("Time_Step", N_cells_total);
                 
             Pressure = View1D<T>("Pressure", N_cells_total);
             SoundSpeed = View1D<T>("Soundspeed", N_cells_total);
@@ -48,18 +49,27 @@ namespace Solver
             Momentum_v_new  = View1D<T>("Momentum_v_new", N_cells_total);
             E_new           = View1D<T>("E_new", N_cells_total);
 
+            rho_0           = View1D<T>("rho_0", N_cells_total);
+            Momentum_u_0    = View1D<T>("Momentum_u_0", N_cells_total);
+            Momentum_v_0    = View1D<T>("Momentum_v_0", N_cells_total);
+            Energy_0        = View1D<T>("Energy_0", N_cells_total);
+            D_history       = View2D<T>("D_history", N_cells_total, 4);
+
             Flux_mass       = View2D<T>("Flux_mass", N_cells_total, meshdata.N_edges);
             Flux_Momentum_u = View2D<T>("Flux_Momentum_u", N_cells_total, meshdata.N_edges);
             Flux_Momentum_v = View2D<T>("Flux_Momentum_v", N_cells_total, meshdata.N_edges);
             Flux_E          = View2D<T>("Flux_E", N_cells_total, meshdata.N_edges);
-            D               = View3D<T>("D", N_cells_total, meshdata.N_edges, 4);
+
+
         }
-        View1D<T> Cell_Areas;
+        View1D<T> Cell_Areas, Time_Step;
         View1D<T> velocity_u, velocity_v, Pressure, SoundSpeed;
         View1D<T> rho_old, Momentum_u_old, Momentum_v_old, E_old;
         View1D<T> rho_new, Momentum_u_new, Momentum_v_new, E_new;
+        View1D<T> rho_0, Momentum_u_0, Momentum_v_0, Energy_0;
+        View2D<T> D_history; // Retained RK contribution per cell, not per face.
         View2D<T> Flux_mass, Flux_Momentum_u, Flux_Momentum_v, Flux_E, Lambdas;
-        View3D<T> Normals, D; // D(cell, face, conservative component)
+        View3D<T> Normals; 
         int Ni_cells, Nj_cells;
         int Ni_mesh, Nj_mesh, N_edges, N_cells_mesh;
         int N_cells_total, Nitotal, Njtotal, N_ghostlayers;

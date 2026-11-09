@@ -68,11 +68,19 @@ namespace Solver
                 detail::copy_cell_views(k_source, k_destination,
                     cellsdata.rho_new, cellsdata.Momentum_u_new, cellsdata.Momentum_v_new, cellsdata.E_new);
             }
-			if constexpr (Fields == CellCopyFields::velocity || Fields == CellCopyFields::OldState || Fields == CellCopyFields::NewState || Fields == CellCopyFields::States || Fields == CellCopyFields::All)
+			if constexpr (Fields == CellCopyFields::velocity || Fields == CellCopyFields::OldState || Fields == CellCopyFields::States || Fields == CellCopyFields::All)
 			{
 				detail::copy_cell_views(k_source, k_destination,
 					cellsdata.velocity_u, cellsdata.velocity_v);
 			}
+            if constexpr (Fields == CellCopyFields::OldState || Fields == CellCopyFields::States || Fields == CellCopyFields::All)
+            {
+                detail::copy_cell_views(k_source, k_destination, cellsdata.Pressure, cellsdata.SoundSpeed);
+            }
+            if constexpr (Fields == CellCopyFields::All)
+            {
+                detail::copy_cell_view(cellsdata.Lambdas, k_source, k_destination);
+            }
             if constexpr (Fields == CellCopyFields::Geometry || Fields == CellCopyFields::All)
             {
                 detail::copy_cell_views(k_source, k_destination,
@@ -81,7 +89,7 @@ namespace Solver
             if constexpr (Fields == CellCopyFields::Fluxes || Fields == CellCopyFields::All)
             {
                 detail::copy_cell_views(k_source, k_destination,
-                    cellsdata.Flux_mass, cellsdata.Flux_Momentum_u, cellsdata.Flux_Momentum_v, cellsdata.Flux_E, cellsdata.D);
+                    cellsdata.Flux_mass, cellsdata.Flux_Momentum_u, cellsdata.Flux_Momentum_v, cellsdata.Flux_E);
             }
         }
 }
