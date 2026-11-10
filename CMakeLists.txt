@@ -34,6 +34,7 @@ ENDIF()
 ##===========subdirectories===========##
 add_subdirectory(CAD)
 add_subdirectory(Mesh)
+add_subdirectory(Main)    # cmfsn: inputs -> geometry -> meshes -> Results/
 add_subdirectory(Solver)
 add_subdirectory(UI)
 

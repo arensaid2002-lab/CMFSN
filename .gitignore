@@ -3,3 +3,8 @@
 build/
 /CMakeUserPresets.json
 /CMakePresets.json
+
+# Generated results: ignore every file under Results/, but keep the folders (their .gitkeep)
+/Results/**
+!/Results/**/
+!/Results/**/.gitkeep
