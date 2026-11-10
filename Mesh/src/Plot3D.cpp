@@ -1,6 +1,8 @@
 #include "Plot3D.h"
-#include <fstream>
 #include <iostream>
+#include <fstream>   //export 
+#include <limits>
+
 
 namespace mesh {
 
@@ -57,5 +59,24 @@ StructuredMesh2D readPlot3D(const std::string& path)
 
         return mesh;
 }
+
+    void writePlot3D(StructuredMesh2D& mesh, const std::string& filename){ //location to save the plot .x,
+        std::ofstream file(filename);
+        file.precision(std::numeric_limits<double>::max_digits10);
+        file << mesh.ni << " " << mesh.nj << "\n"; // line 1
+
+        // pass 1: every x
+        for (const auto& p : mesh.nodes){
+            file << p.x << "\n"; 
+            }
+        // pass 2: every y 
+        for (const auto& p : mesh.nodes){
+            file << p.y << "\n"; 
+            }
+
+    }
+
+    
+
 
 } // namespace mesh

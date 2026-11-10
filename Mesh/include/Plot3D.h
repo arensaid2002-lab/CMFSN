@@ -7,4 +7,6 @@ namespace mesh {
 
     StructuredMesh2D readPlot3D(const std::string& path);
         
+    void writePlot3D(StructuredMesh2D& mesh, const std::string& filename); //location to save the plot .x,
+
         }

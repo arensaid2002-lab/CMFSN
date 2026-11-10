@@ -1,7 +1,7 @@
 #pragma once
 #include "StructuredMesh2D.h"
 #include "nacawing/NACA.hpp"
-
+#include <string>
 
 namespace mesh {
 

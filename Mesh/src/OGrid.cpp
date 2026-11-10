@@ -4,6 +4,7 @@
 #include <numbers>   //for pi
 #include <algorithm> //for min
 
+
 //Construction plan
 
     //INPUTS, naca.m, naca.p, naca.t, and nc (number of cells per direction, so ni = nj = nc + 1)
@@ -194,5 +195,6 @@ namespace mesh {
             }
 
         return mesh;    
-        }
+        }    
+
 } // namespace mesh
