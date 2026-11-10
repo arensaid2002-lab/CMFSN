@@ -16,6 +16,9 @@ namespace nacawing {
         double sweepLE;             // [deg]  \Lambda_{LE}
         double twistTip;            // [deg]  \varepsilon_t,
         double dihedral;            // [deg]  phi (not Gamma: in the VLM, Gamma is the circulation)
+
+        double twistPivot = 0.25;   // [-] fraction of the local chord the twist turns around       // MUST BE [0,1]
+        double twistExponent = 1.0;  // [-] p in eps = eps_t * eta^p, 1 = linear                    // MUST BE p > 0
     };
     //For post traitement
     double taperRatio (const WingParams& w);

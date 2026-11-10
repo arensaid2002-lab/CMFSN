@@ -5,7 +5,7 @@
 #include <numbers>
 
 namespace nacawing {
-    //For post traitement
+//For post traitement
     double area(const WingParams& w)            //S is the full wing area (both halves)
         {
             double lambda = taperRatio(w);
@@ -23,8 +23,7 @@ namespace nacawing {
             double lambda = taperRatio(w);
             return 2.0/3.0*w.c_r*(1.0+lambda+lambda*lambda)/(1.0+lambda);
         }
-    
-    //Making the wing
+//Making the wing
     double taperRatio(const WingParams& w)      //lambda ; taper ratio: 1 = rectangular, 0 = pointed tip
         {
             return w.c_t / w.c_r;
@@ -56,9 +55,9 @@ namespace nacawing {
 
             double eta = y / (w.b / 2.0);              // y = span station
             double c = chordAt(w, y);
-            double epsilon = AngleToRad(w.twistTip * eta);
+            double epsilon = AngleToRad(w.twistTip * std::pow(eta,w.twistExponent));
             double x_LE = y * std::tan(AngleToRad(w.sweepLE));
-            double x_p = c * 0.25;
+            double x_p = c * w.twistPivot;
 
             std::vector<Point3D> section;
             section.reserve(loop.size());          // allocate 2n−1 slots up front
@@ -67,7 +66,7 @@ namespace nacawing {
                 // 4. scale: the profile's y becomes z (up)
                 double x  = q.x * c;
                 double z  = q.y * c;
-                // 5. twist about the span axis (y), pivot at c/4
+                // 5. twist about the span axis (y), w.twistPivot default = c/4
                 double xr = x_p + (x-x_p)*std::cos(epsilon) + z*std::sin(epsilon);
                 double zr = -(x-x_p)*std::sin(epsilon) + z*std::cos(epsilon);
                 // 6. translate: sweep moves x, the span station is y, dihedral lifts z

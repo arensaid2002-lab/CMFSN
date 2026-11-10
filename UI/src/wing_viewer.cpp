@@ -12,7 +12,7 @@
 // raylib is y-up, so toVec swaps them: CAD (x, y span, z up) -> raylib (x, z up, y span).
 //
 // Controls: drag with the left mouse button to turn around the wing, mouse wheel to zoom.
-// The panel on the left changes the airfoil (NACA digits) and the wing (span, chords, sweep, twist, dihedral, stations).
+// The panel on the left changes the airfoil (NACA digits) and the wing (span, chords, sweep, twist, twist pivot and exponent, dihedral, stations).
 
 
 // Point3D (double, from CAD) -> Vector3 (float, what raylib draws). sign = -1 mirrors the point to the left wing (span -> -span).
@@ -68,6 +68,8 @@ int main()
     float tipChord = 0.5f;      // [m]   c_t
     float sweep = 20.0f;        // [deg] leading-edge sweep
     float twist = -4.0f;        // [deg] tip twist (negative = washout, nose down at the tip)
+    float twistPivot = 0.25f;   // [-]   fraction of the local chord the twist turns around (0 = LE, 1 = TE)
+    float twistExponent = 1.0f; // [-]   p in eps(eta) = eps_t * eta^p (1 = linear); the slider keeps it > 0
     float dihedral = 0.0f;      // [deg]
     float stations = 11.0f;     // Ns, number of sections from root to tip (rounded to an int below)
     bool mirror = false;        // also draw the left half
@@ -95,7 +97,8 @@ int main()
         // 1. Geometry. Rebuilt every frame: it is only Ns x (2n - 1) points, so it is cheap,
         //    and it means every slider change shows up at once without extra bookkeeping.
         nacawing::WingParams w{.b = span, .c_r = rootChord, .c_t = tipChord,
-                                   .sweepLE = sweep, .twistTip = twist, .dihedral = dihedral};
+                                   .sweepLE = sweep, .twistTip = twist, .dihedral = dihedral,
+                                   .twistPivot = twistPivot, .twistExponent = twistExponent};
         int Ns = static_cast<int>(std::lround(stations));
         std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(airfoil.m, airfoil.p, airfoil.t, n);
         std::vector<std::vector<nacawing::Point3D>> wing = nacawing::wingSurface(w, loop, Ns);
@@ -151,6 +154,9 @@ int main()
         GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "tip c_t", TextFormat("%.2f m", tipChord), &tipChord, 0.05f, 3.0f);    y += S(24);
         GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "sweep LE", TextFormat("%.0f deg", sweep), &sweep, -20.0f, 60.0f);     y += S(24);
         GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "tip twist", TextFormat("%.1f deg", twist), &twist, -10.0f, 10.0f);    y += S(24);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "twist pivot", TextFormat("%.2f c", twistPivot), &twistPivot, 0.0f, 1.0f); y += S(24);
+        // Exponent range 0.25..3: never 0 (eta^0 = 1 would twist the root too), the library needs p > 0.
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "twist exp p", TextFormat("%.2f", twistExponent), &twistExponent, 0.25f, 3.0f); y += S(24);
         GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "dihedral", TextFormat("%.1f deg", dihedral), &dihedral, -10.0f, 15.0f); y += S(24);
         GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "stations", TextFormat("%i", Ns), &stations, 2.0f, 41.0f);             y += S(28);
         GuiCheckBox(Rectangle{S(12), y, S(14), S(14)}, "mirror left half", &mirror);                                          y += S(30);
