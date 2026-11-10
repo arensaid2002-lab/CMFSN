@@ -4,6 +4,8 @@
 #include "nacawing/NACA.hpp"
 #include "nacawing/NACASurface.hpp"
 #include "nacawing/3Dwing.hpp"
+#include "VLMmesh.h"
+#include "BeamMesh.h"
 #include <cmath>
 #include <vector>
 
@@ -13,6 +15,9 @@
 //
 // Controls: drag with the left mouse button to turn around the wing, mouse wheel to zoom.
 // The panel on the left changes the airfoil (NACA digits) and the wing (span, chords, sweep, twist, twist pivot and exponent, dihedral, stations).
+// The buttons at the top right show the wing surface, the VLM grid (Mesh/VLMmesh.h) and the beam nodes (Mesh/BeamMesh.h),
+// and choose the span spacing (Uniform or SineTip). The VLM and the beam use the SAME Ns stations,
+// so every beam node sits exactly on a spanwise line of the VLM grid.
 
 
 // Point3D (double, from CAD) -> Vector3 (float, what raylib draws). sign = -1 mirrors the point to the left wing (span -> -span).
@@ -47,6 +52,31 @@ void drawHalfWing(const std::vector<std::vector<nacawing::Point3D>>& wing, float
     }
 }
 
+// Draws one half of the VLM grid: flat order k = j(ni+1) + i (chord index i varies fastest, see VLMmesh.h).
+// Chordwise lines (one per station j) in dark blue: these are the stations shared with the beam.
+void drawHalfVlm(const mesh::VlmGrid& g, float sign)
+{
+    auto P = [&g](int i, int j) { return g.P[static_cast<size_t>(j * (g.ni + 1) + i)]; };
+    for (int j = 0; j <= g.nj; ++j)                        // chordwise lines, LE -> TE, at station j
+        for (int i = 0; i < g.ni; ++i)
+            DrawLine3D(toVec(P(i, j), sign), toVec(P(i + 1, j), sign), DARKBLUE);
+    for (int i = 0; i <= g.ni; ++i)                        // spanwise lines, root -> tip
+        for (int j = 0; j < g.nj; ++j)
+            DrawLine3D(toVec(P(i, j), sign), toVec(P(i, j + 1), sign), SKYBLUE);
+}
+
+// Draws one half of the beam: the nj + 1 nodes (spheres) and the nj elements (node e to node e + 1).
+void drawHalfBeam(const std::vector<mesh::NastranData>& nodes, float sign)
+{
+    auto v = [sign](const mesh::NastranData& q) {
+        return toVec(nacawing::Point3D{q.x, q.y, q.z}, sign);
+    };
+    for (size_t e = 0; e + 1 < nodes.size(); ++e)
+        DrawCylinderEx(v(nodes[e]), v(nodes[e + 1]), 0.012f, 0.012f, 6, DARKGREEN);   // element as a thin tube
+    for (const auto& q : nodes)
+        DrawSphere(v(q), 0.035f, ORANGE);
+}
+
 
 int main()
 {
@@ -73,6 +103,12 @@ int main()
     float dihedral = 0.0f;      // [deg]
     float stations = 11.0f;     // Ns, number of sections from root to tip (rounded to an int below)
     bool mirror = false;        // also draw the left half
+
+    // What to draw (buttons at the top right) and how the stations are spread along the span.
+    bool showWing = true, showVlm = false, showBeam = false;
+    int spacingChoice = 1;              // 0 = Uniform, 1 = SineTip (the default for the VLM and the beam)
+    const int niVlm = 8;                // chordwise VLM panels (ni), fixed here: only the span spacing is compared
+    float beamFraction = 0.38f;         // beam node at x = f c along the camber line (slider; 0.38 = proposal, structure team to decide)
 
     // Orbit camera: it sits on a sphere around the middle of the wing.
     // yaw turns around the vertical y axis, pitch looks from above (> 0) or below (< 0), distance is the zoom.
@@ -101,7 +137,14 @@ int main()
                                    .twistPivot = twistPivot, .twistExponent = twistExponent};
         int Ns = static_cast<int>(std::lround(stations));
         std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(airfoil.m, airfoil.p, airfoil.t, n);
-        std::vector<std::vector<nacawing::Point3D>> wing = nacawing::wingSurface(w, loop, Ns);
+        nacawing::SpanSpacing spacing = (spacingChoice == 0) ? nacawing::SpanSpacing::Uniform
+                                                             : nacawing::SpanSpacing::SineTip;
+        std::vector<std::vector<nacawing::Point3D>> wing = nacawing::wingSurface(w, loop, Ns, spacing);
+
+        // Meshes on the same Ns stations: nj = Ns - 1 panels/elements along the span.
+        int nj = Ns - 1;
+        mesh::VlmGrid vlm = mesh::vlmGrid(w, mesh::nacaCambrure(airfoil.m, airfoil.p, niVlm + 1), nj, spacing);
+        std::vector<mesh::NastranData> beam = mesh::BeamMesh(w, mesh::nacaCambrurePoint(airfoil.m, airfoil.p, static_cast<double>(beamFraction)), nj, spacing);
 
         // 2. Camera. Drag outside the panel to turn, wheel to zoom.
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(GetMousePosition(), panel)) {
@@ -131,8 +174,18 @@ int main()
         DrawLine3D(Vector3{0, 0, 0}, Vector3{1, 0, 0}, RED);     // x axis, 1 m long (chord direction)
         DrawLine3D(Vector3{0, 0, 0}, Vector3{0, 1, 0}, GREEN);   // CAD z axis (up)
         DrawLine3D(Vector3{0, 0, 0}, Vector3{0, 0, 1}, BLUE);    // CAD y axis (span)
-        drawHalfWing(wing, 1.0f);
-        if (mirror) drawHalfWing(wing, -1.0f);
+        if (showWing) {
+            drawHalfWing(wing, 1.0f);
+            if (mirror) drawHalfWing(wing, -1.0f);
+        }
+        if (showVlm) {
+            drawHalfVlm(vlm, 1.0f);
+            if (mirror) drawHalfVlm(vlm, -1.0f);
+        }
+        if (showBeam) {
+            drawHalfBeam(beam, 1.0f);
+            if (mirror) drawHalfBeam(beam, -1.0f);
+        }
         EndMode3D();
 
         // 4. The panel with the inputs.
@@ -167,6 +220,18 @@ int main()
         DrawText(TextFormat("aspect ratio %.2f", nacawing::aspectRatio(w)), F(12), static_cast<int>(y), F(10), DARKGRAY);           y += S(16);
         DrawText(TextFormat("MAC          %.3f m", nacawing::meanAeroChord(w)), F(12), static_cast<int>(y), F(10), DARKGRAY);       y += S(16);
         DrawText(TextFormat("%i sections x %i points", Ns, static_cast<int>(loop.size())), F(12), static_cast<int>(y), F(10), DARKGRAY);
+
+        // 5. Buttons at the top right: what to show, and the span spacing.
+        float right = static_cast<float>(GetScreenWidth());
+        GuiToggle(Rectangle{right - S(250), S(10), S(76), S(22)}, "Wing", &showWing);
+        GuiToggle(Rectangle{right - S(170), S(10), S(76), S(22)}, "VLM mesh", &showVlm);
+        GuiToggle(Rectangle{right - S(90), S(10), S(76), S(22)}, "Beam mesh", &showBeam);
+        GuiToggleGroup(Rectangle{right - S(250), S(38), S(116), S(22)}, "Uniform;Sine (tip)", &spacingChoice);
+        DrawText(TextFormat("VLM %i x %i panels   beam %i nodes, %i elements", niVlm, nj, nj + 1, nj),
+                 static_cast<int>(right - S(250)), F(66), F(10), DARKGRAY);
+        DrawText("same stations: each beam node is on a VLM chord line", static_cast<int>(right - S(250)), F(80), F(10), DARKGRAY);
+        // Chordwise position of the beam node, as a fraction of the local chord (0 = LE, 1 = TE).
+        GuiSliderBar(Rectangle{right - S(190), S(96), S(110), S(14)}, "beam x/c", TextFormat("%.2f c", beamFraction), &beamFraction, 0.0f, 1.0f);
 
         DrawText("drag: turn   wheel: zoom", F(12), GetScreenHeight() - F(20), F(10), GRAY);
         EndDrawing();

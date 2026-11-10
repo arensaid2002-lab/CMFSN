@@ -7,7 +7,7 @@
 //   Results/Geometry        airfoil coordinates (.csv)
 //   Results/Mesh/Euler      2D O-grid around the airfoil (PLOT3D .x)
 //   Results/Mesh/VLM        vortex-lattice panels on the camber surface (Tecplot .dat)
-//   Results/Mesh/Structure  beam mesh (to do)
+//   Results/Mesh/Structure  beam nodes on the VLM span stations (one line id,x,y,z,..., structure-team format)
 //   Results/Solution        solver results (later)
 
 #include "nacawing/NACA.hpp"
@@ -16,6 +16,7 @@
 #include "OGrid.h"
 #include "Plot3D.h"
 #include "VLMmesh.h"
+#include "BeamMesh.h"
 
 #include <filesystem>
 #include <fstream>
@@ -35,7 +36,7 @@ int main()
     //     all as fractions of the chord.
 
     const int M = 0, P = 0, TT = 12;                       // NACA 
-    const int nSurface = 101;                              // points per surface for the geometry .csv
+    const int nSurface = 1001;                              // points per surface for the geometry .csv
 
     
     const nacawing::NacaParams airfoil = nacawing::fromDigits(M, P, TT);
@@ -58,11 +59,17 @@ int main()
     const int vlmNi = 8;
     const int vlmNj = 12;
     const nacawing::SpanSpacing vlmSpacing = nacawing::SpanSpacing::SineTip;   // panels shrink toward the tip
-    //  Euler: nc cells in each direction (ni = nj = nc + 1 nodes). nc must be even.
+
+    //  Euler: nc cells in each direction (ni = nj = nc + 1 nodes). nc must be even. PRENDRE PUISSANCE DE 2
     //  generateOGrid only supports symmetric profiles for now, so the Euler mesh uses NACA 0012.
     const nacawing::NacaParams eulerAirfoil = nacawing::fromDigits(0, 0, 12);
-    const int eulerNc = 64;
-    //  Structure: TODO (beam mesh, not written yet).
+    const int eulerNc = 4096;
+
+    //  Structure: beam nodes on the SAME span stations as the VLM (vlmNj + 1 nodes, vlmNj elements,
+    //  vlmSpacing), so every node sits on a VLM chord line (load transfer, Jasa et al. 2018, sec. 3.2).
+    //  beamXc = chordwise position of the node, fraction of the local chord on the camber line
+    //  (0 = LE, 1 = TE). 0.38 is a proposal (OAS wingbox formula); the structure team decides.
+    const double beamXc = 0.38;
 
     // 1.4 Output folders (created if they are missing; nothing happens if they exist).
     const fs::path results    = CMFSN_RESULTS_DIR;
@@ -119,7 +126,17 @@ int main()
                           + " panels, " + std::to_string(grid.P.size()) + " points)");
     }
 
-    // 3.3 Structure: TODO beam mesh along the span (elastic axis, sections from sectionAt).
+    // 3.3 Structure: beam nodes. nacaCambrurePoint gives ONE camber point (beamXc, y_c), and BeamMesh
+    //     extrudes it with wingSurface on the VLM stations (same vlmNj and vlmSpacing), so it gets
+    //     the local chord, sweep, twist and dihedral. Ids start at 1; element e joins nodes e and e + 1.
+    {
+        std::vector<nacawing::Point2D> beamPoint = mesh::nacaCambrurePoint(airfoil.m, airfoil.p, beamXc);
+        std::vector<mesh::NastranData> nodes = mesh::BeamMesh(wing, beamPoint, vlmNj, vlmSpacing);
+        const fs::path file = structDir / ("beam_" + airfoilName + "_nj" + std::to_string(vlmNj) + ".txt");
+        mesh::writeNastran(nodes, file.string());
+        summary.push_back(file.generic_string() + "  (" + std::to_string(nodes.size()) + " nodes, "
+                          + std::to_string(nodes.size() - 1) + " elements, x/c = " + std::to_string(beamXc) + ")");
+    }
 
     // =====================================================================
     // 4. SUMMARY
