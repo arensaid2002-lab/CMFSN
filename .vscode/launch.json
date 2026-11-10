@@ -6,7 +6,10 @@
     { "name": "mesh_viewer", "type": "cppvsdbg", "request": "launch",
       "program": "${workspaceFolder}/build/UI/Debug/mesh_viewer.exe", "cwd": "${workspaceFolder}" },
     { "name": "wing_viewer", "type": "cppvsdbg", "request": "launch",
-      "program": "${workspaceFolder}/build/UI/Debug/wing_viewer.exe", "cwd": "${workspaceFolder}" }
+      "program": "${workspaceFolder}/build/UI/Debug/wing_viewer.exe", "cwd": "${workspaceFolder}" },
+    { "name": "cmfsn", "type": "cppvsdbg", "request": "launch",
+      "program": "${workspaceFolder}/build/Main/Debug/cmfsn.exe", "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build cmfsn" }
   ],
   "compounds": [
     { "name": "Both viewers", "configurations": ["naca_viewer", "mesh_viewer"],

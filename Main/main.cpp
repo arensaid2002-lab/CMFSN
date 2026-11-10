@@ -33,10 +33,13 @@ int main()
 
     // 1.1 Airfoil: NACA M P TT -> m = M/100 (max camber), p = P/10 (its position), t = TT/100 (thickness),
     //     all as fractions of the chord.
-    const int M = 2, P = 4, TT = 12;                       // NACA 2412
+
+    const int M = 0, P = 0, TT = 12;                       // NACA 
+    const int nSurface = 101;                              // points per surface for the geometry .csv
+
+    
     const nacawing::NacaParams airfoil = nacawing::fromDigits(M, P, TT);
     const std::string airfoilName = "NACA" + std::to_string(M) + std::to_string(P) + (TT < 10 ? "0" : "") + std::to_string(TT);
-    const int nSurface = 101;                              // points per surface for the geometry .csv
 
     // 1.2 Wing (see 3Dwing.hpp). Every field is named so the order cannot be mixed up.
     const nacawing::WingParams wing{
