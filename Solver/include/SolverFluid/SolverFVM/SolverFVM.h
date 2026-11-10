@@ -8,10 +8,12 @@
 
 namespace Solver
 {
-    template <typename T = float, SolverTypes SType = SolverTypes::Euler2D, TimeEvolutionScheme TEScheme = TimeEvolutionScheme::Steady>
+    template <typename T = float, SolverTypes SType = SolverTypes::Euler2D, TimeEvolutionScheme TEScheme = TimeEvolutionScheme::Steady, RungeKuttaScheme RKScheme = RungeKuttaScheme::Unspecified>
     class SolverFVM
     {
         static_assert(SType == SolverTypes::Euler2D, "Only the Euler2D solver is implemented");
+        static_assert(TEScheme != TimeEvolutionScheme::UnSteady || RKScheme != RungeKuttaScheme::Unspecified, "UnSteady mode requires an explicit RungeKuttaScheme");
+        static_assert(TEScheme == TimeEvolutionScheme::UnSteady || RKScheme != RungeKuttaScheme::CarpenterKennedy, "Carpenter-Kennedy is only available in UnSteady mode");
 
         public:
             struct StateInfo { int iteration = 0; double physical_time = 0; T time_step = T{0}; };

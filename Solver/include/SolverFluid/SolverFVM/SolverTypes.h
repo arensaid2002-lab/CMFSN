@@ -13,4 +13,11 @@ namespace Solver
         Steady,
         UnSteady,
     };
+
+    enum class RungeKuttaScheme
+    {
+        Unspecified,
+        Jameson,
+        CarpenterKennedy,
+    };
 }

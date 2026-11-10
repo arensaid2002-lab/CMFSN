@@ -8,14 +8,14 @@
 
 namespace Solver
 {
-    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme>
-    SolverFVM<T, SType, TEScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : cells_handler(Mach_inf, gamma, alpha, N_gLayer, Mesh_Euler)
+    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
+    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : cells_handler(Mach_inf, gamma, alpha, N_gLayer, Mesh_Euler)
     {
     }
 
     
-    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme>
-    void SolverFVM<T, SType, TEScheme>::run(int iterations, T CFL, int report_interval, std::ostream* history, StateObserver observer, int snapshot_interval, double final_time)
+    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
+    void SolverFVM<T, SType, TEScheme, RKScheme>::run(int iterations, T CFL, int report_interval, std::ostream* history, StateObserver observer, int snapshot_interval, double final_time)
     {
         if (iterations < 0 || !(CFL > T{0}) || !std::isfinite(CFL) || report_interval < 1 || snapshot_interval < 1)
             throw std::invalid_argument("Solver run requires nonnegative iterations, positive finite CFL, and positive reporting intervals");
@@ -79,7 +79,11 @@ namespace Solver
                 if (diagnostics.residual_rms <= 1e-6)
                     break;
             }
-            const T time_step = CellOps::RungeKutta5<Kokkos::DefaultExecutionSpace, T, SType, TEScheme>(cells_handler.get_CellsData(), cells_handler.get_InitializationData(), CFL, step_limit);
+            T time_step;
+            if constexpr (RKScheme == RungeKuttaScheme::CarpenterKennedy)
+                time_step = CellOps::RungeKuttaCarpenterKennedy5<Kokkos::DefaultExecutionSpace, T, SType, TEScheme>(cells_handler.get_CellsData(), cells_handler.get_InitializationData(), CFL, step_limit);
+            else
+                time_step = CellOps::RungeKutta5<Kokkos::DefaultExecutionSpace, T, SType, TEScheme>(cells_handler.get_CellsData(), cells_handler.get_InitializationData(), CFL, step_limit);
             ++state_info.iteration;
             if constexpr (TEScheme == TimeEvolutionScheme::UnSteady)
             {
@@ -98,8 +102,8 @@ namespace Solver
             report(eval_diagnostics(cells_handler.get_CellsData()));
     }
 
-    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme>
-    void SolverFVM<T, SType, TEScheme>::run_until(double final_time, T CFL, int report_interval, std::ostream* history, StateObserver observer, int snapshot_interval, int max_iterations)
+    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
+    void SolverFVM<T, SType, TEScheme, RKScheme>::run_until(double final_time, T CFL, int report_interval, std::ostream* history, StateObserver observer, int snapshot_interval, int max_iterations)
     {
         if constexpr (TEScheme != TimeEvolutionScheme::UnSteady)
             throw std::logic_error("Physical-time stopping requires the UnSteady solver mode");
@@ -109,8 +113,8 @@ namespace Solver
         if (state_info.physical_time < final_time)
             throw std::runtime_error("Maximum number of physical steps reached before the requested final time");
     }
-    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme>
-    typename SolverFVM<T, SType, TEScheme>::Diagnostics SolverFVM<T, SType, TEScheme>::eval_diagnostics(const CellsData<T>& cellsdata)
+    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
+    typename SolverFVM<T, SType, TEScheme, RKScheme>::Diagnostics SolverFVM<T, SType, TEScheme, RKScheme>::eval_diagnostics(const CellsData<T>& cellsdata)
     {
         if (cellsdata.N_cells_mesh < 1)
             throw std::invalid_argument("Diagnostics require physical cells");
@@ -132,8 +136,8 @@ namespace Solver
             result.residual_rms = eval_residual_rms(cellsdata);
         return result;
     }
-    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme>
-    double SolverFVM<T, SType, TEScheme>::eval_residual_rms(const CellsData<T>& cellsdata)
+    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
+    double SolverFVM<T, SType, TEScheme, RKScheme>::eval_residual_rms(const CellsData<T>& cellsdata)
     {
 		double residual_squared = 0;
 		Kokkos::parallel_reduce("Euler2D_ResidualDiagnostic", Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh, double& sum)

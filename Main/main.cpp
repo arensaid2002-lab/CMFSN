@@ -11,8 +11,9 @@ int main(int argc, char* argv[])
     Kokkos::ScopeGuard guard(argc, argv);
     try
     {
-        using T = float;
+        using T = double;
         constexpr auto TimeScheme = Solver::TimeEvolutionScheme::UnSteady;
+        constexpr auto RKScheme = Solver::RungeKuttaScheme::CarpenterKennedy;
         const T Mach_inf = T(2), gamma = T(1.4), alpha = T{0}; // alpha is in radians.
         const int N_ghostlayers = 3;
         const double final_time = argc > 2 ? std::stod(argv[2]) : 1;
@@ -28,7 +29,7 @@ int main(int argc, char* argv[])
         Mesh::MeshHandler<T> mesh_handler;
         auto& meshdata = mesh_handler.get_Mesh_Euler();
         IO::Import_Mesh<T, Mesh::MeshFileFormat::Plot3D>(path, meshdata);
-        Solver::SolverFVM<T, Solver::SolverTypes::Euler2D, TimeScheme> solver(Mach_inf, gamma, alpha, N_ghostlayers, meshdata);
+        Solver::SolverFVM<T, Solver::SolverTypes::Euler2D, TimeScheme, RKScheme> solver(Mach_inf, gamma, alpha, N_ghostlayers, meshdata);
 
         const auto output_dir = IO::Create_RunDirectory(output_root);
         std::ofstream history(output_dir / "residuals.csv");
