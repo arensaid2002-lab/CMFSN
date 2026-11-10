@@ -6,6 +6,7 @@ add_library(mesh_core
     src/Plot3D.cpp
     src/OGrid.cpp
     src/VLMmesh.cpp
+    src/BeamMesh.cpp
 )
 
 # Anyone who links to mesh_core can #include "StructuredMesh2D.h" and "Plot3D.h".

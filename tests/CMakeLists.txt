@@ -34,3 +34,7 @@ add_test(NAME ogrid_wall COMMAND test_ogrid_wall)
 add_executable(test_vlm test_vlm.cpp)
 target_link_libraries(test_vlm PRIVATE mesh_core)
 add_test(NAME vlm COMMAND test_vlm)
+
+add_executable(test_beam test_beam.cpp)
+target_link_libraries(test_beam PRIVATE mesh_core)
+add_test(NAME beam COMMAND test_beam)
