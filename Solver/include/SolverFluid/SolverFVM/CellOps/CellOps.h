@@ -350,6 +350,7 @@ namespace Solver::CellOps
 
                 Kokkos::Array<T, 4> Ghost_State;
                 const auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, 2);
+				const auto DJacobien = eval_CellDJacobien<T>(cellsdata, k_cell, 2);
                 const auto V_in = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
                 const auto V_inf = Kokkos::Array<T, 2>{ init_data.velocity_u_inf, init_data.velocity_v_inf };
 

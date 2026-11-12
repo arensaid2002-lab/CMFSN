@@ -9,13 +9,13 @@
 namespace Solver
 {
     template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
-    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_ghost_layers, const MeshData_Structured<T>& Mesh_Euler) : SolverFVM(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, N_ghost_layers, Mesh_Euler)
+    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, const MeshData_Structured<T>& Mesh_Euler) : SolverFVM(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, Mesh_Euler)
     {
         static_assert(SType == SolverTypes::Euler2D, "RANS2D requires explicit Reynolds and Prandtl numbers");
     }
 
     template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
-    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_ghost_layers, const MeshData_Structured<T>& Mesh_Euler, BoundaryCondition wall_condition, T wall_temperature) : cells_handler(Mach_inf, gamma, alpha, Re, Pr, N_ghost_layers, Mesh_Euler, wall_condition, wall_temperature)
+    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, T Re, T Pr, const MeshData_Structured<T>& Mesh_Euler, BoundaryCondition wall_condition, T wall_temperature) : cells_handler(Mach_inf, gamma, alpha, Re, Pr, Mesh_Euler, wall_condition, wall_temperature)
     {
     }
 

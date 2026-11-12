@@ -5,15 +5,17 @@
 namespace Solver
 {
     template <typename ExecSpace, typename T, SolverTypes SType>
-    CellsHandler<ExecSpace, T, SType>::CellsHandler(T Mach_inf, T gamma, T alpha, int N_ghost_layers, const MeshData_Structured<T>& meshdata) : CellsHandler(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, N_ghost_layers, meshdata)
+    CellsHandler<ExecSpace, T, SType>::CellsHandler(T Mach_inf, T gamma, T alpha, const MeshData_Structured<T>& meshdata) : CellsHandler(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, meshdata)
     {
         static_assert(SType == SolverTypes::Euler2D, "RANS2D requires explicit Reynolds and Prandtl numbers");
     }
 
     template <typename ExecSpace, typename T, SolverTypes SType>
-    CellsHandler<ExecSpace, T, SType>::CellsHandler(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_ghost_layers, const MeshData_Structured<T>& meshdata, BoundaryCondition wall_condition, T wall_temperature) : CellsData_(N_ghost_layers, meshdata), init_data_(Mach_inf, gamma, alpha, Re, Pr, wall_condition, wall_temperature), MeshData_(meshdata)
+    CellsHandler<ExecSpace, T, SType>::CellsHandler(T Mach_inf, T gamma, T alpha, T Re, T Pr, const MeshData_Structured<T>& meshdata, BoundaryCondition wall_condition, T wall_temperature) : CellsData_(meshdata), init_data_(Mach_inf, gamma, alpha, Re, Pr, wall_condition, wall_temperature), MeshData_(meshdata)
     {
-        if (CellsData_.N_faces != 4 || N_ghost_layers < 1 || CellsData_.Ni_physical_cells < N_ghost_layers || CellsData_.Nj_physical_cells < N_ghost_layers)
+        if (CellsData_.N_faces != 4 ||
+            CellsData_.Ni_physical_cells < CellsData<T>::N_ghost_layers ||
+            CellsData_.Nj_physical_cells < CellsData<T>::N_ghost_layers)
             throw std::invalid_argument("Cell initialization requires four faces and enough physical cells for the ghost layers");
         if (!(gamma > T{1}) || !std::isfinite(gamma))
             throw std::invalid_argument("Euler initialization requires gamma greater than one");

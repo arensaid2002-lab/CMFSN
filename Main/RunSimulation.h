@@ -15,7 +15,6 @@ namespace CMFSN
     struct SimulationParameters
     {
         T Mach_inf = T{2}, gamma = T(1.4), alpha = T{0}; // alpha is in radians.
-        int N_ghost_layers = 3;
         Solver::BoundaryCondition wall_condition = Solver::BoundaryCondition::AdiabaticWall;
         T wall_temperature = T{1}; // Nondimensional temperature, consistent with p/rho.
         T CFL = T(3.9);
@@ -33,7 +32,7 @@ namespace CMFSN
         Mesh::MeshHandler<T> mesh_handler;
         auto& meshdata = mesh_handler.get_Mesh_Euler();
         IO::Import_Mesh<T, Mesh::MeshFileFormat::Plot3D>(parameters.mesh_path.string(), meshdata);
-        Solver::SolverFVM<T, SType, TimeScheme, RKScheme> solver(parameters.Mach_inf, parameters.gamma, parameters.alpha, parameters.Re_inf, parameters.Pr_inf, parameters.N_ghost_layers, meshdata, parameters.wall_condition, parameters.wall_temperature);
+        Solver::SolverFVM<T, SType, TimeScheme, RKScheme> solver(parameters.Mach_inf, parameters.gamma, parameters.alpha, parameters.Re_inf, parameters.Pr_inf, meshdata, parameters.wall_condition, parameters.wall_temperature);
         const auto output_dir = IO::Create_RunDirectory(parameters.output_root);
         std::ofstream history(output_dir / "residuals.csv");
         if (!history)

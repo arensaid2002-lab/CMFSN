@@ -20,13 +20,14 @@ namespace Solver
     template <typename T = float>
     struct CellsData
     {
-		CellsData(int N_ghost_layers_, const MeshData_Structured<T>& meshdata) :	Ni_nodes(meshdata.Ni), Nj_nodes(meshdata.Nj), N_faces(meshdata.N_faces), N_physical_cells(meshdata.N_Cells)
+        static constexpr int N_ghost_layers = 3;
+
+        explicit CellsData(const MeshData_Structured<T>& meshdata) :	Ni_nodes(meshdata.Ni), Nj_nodes(meshdata.Nj), N_faces(meshdata.N_faces), N_physical_cells(meshdata.N_Cells)
         {
             Ni_physical_cells = meshdata.Ni - 1;
             Nj_physical_cells = meshdata.Nj - 1;
 
 
-            N_ghost_layers   = N_ghost_layers_;
             Ni_total_cells         = Ni_physical_cells + 2 * N_ghost_layers;
             Nj_total_cells         = Nj_physical_cells + 2 * N_ghost_layers;
             N_total_cells   = (Ni_total_cells) * (Nj_total_cells);
@@ -59,6 +60,7 @@ namespace Solver
             Energy_0        = View1D<T>("Energy_0", N_total_cells);
             D_history       = View2D<T>("D_history", N_total_cells, 4);
             DJacobien        = View3D<T>("dxy_local", N_total_cells, meshdata.N_faces, 4);
+            
 
             Flux_mass       = View2D<T>("Flux_mass", N_total_cells, meshdata.N_faces);
             Flux_Momentum_u = View2D<T>("Flux_Momentum_u", N_total_cells, meshdata.N_faces);
@@ -77,7 +79,7 @@ namespace Solver
         View3D<T> Normals, DJacobien; 
         int Ni_physical_cells, Nj_physical_cells;
         int Ni_nodes, Nj_nodes, N_faces, N_physical_cells;
-        int N_total_cells, Ni_total_cells, Nj_total_cells, N_ghost_layers;
+        int N_total_cells, Ni_total_cells, Nj_total_cells;
     };
 
     template <typename T = float>

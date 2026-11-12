@@ -43,12 +43,13 @@ fortement etiree.
 ## Configuration visqueuse
 
 Le constructeur avec Reynolds et Prandtl accepte a la fin la condition
-thermique puis sa temperature. Les appels existants restent valides ; la
-paroi par defaut est adiabatique.
+thermique puis sa temperature. Le nombre de couches fantomes est fixe a trois
+par `CellsData<T>::N_ghost_layers` et ne fait plus partie des arguments des
+constructeurs. La paroi par defaut est adiabatique.
 
 ```cpp
 Solver::SolverFVM<T, Solver::SolverTypes::RANS2D, TimeScheme, RKScheme> solver(
-    Mach, gamma, alpha, Re, Pr, N_ghost_layers, mesh,
+    Mach, gamma, alpha, Re, Pr, mesh,
     Solver::BoundaryCondition::isothermalWall, wall_temperature);
 ```
 

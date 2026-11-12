@@ -11,8 +11,8 @@ namespace Solver
     class CellsHandler
     {
         public:
-            CellsHandler(T Mach_inf, T gamma, T alpha, int N_ghost_layers, const MeshData_Structured<T>& meshdata);
-            CellsHandler(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_ghost_layers, const MeshData_Structured<T>& meshdata, BoundaryCondition wall_condition = BoundaryCondition::AdiabaticWall, T wall_temperature = T{1});
+            CellsHandler(T Mach_inf, T gamma, T alpha, const MeshData_Structured<T>& meshdata);
+            CellsHandler(T Mach_inf, T gamma, T alpha, T Re, T Pr, const MeshData_Structured<T>& meshdata, BoundaryCondition wall_condition = BoundaryCondition::AdiabaticWall, T wall_temperature = T{1});
             ~CellsHandler() = default;
 
             void initialize_cells();

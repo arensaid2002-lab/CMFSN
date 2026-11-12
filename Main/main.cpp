@@ -14,7 +14,6 @@ int main(int argc, char* argv[])
         parameters.Mach_inf = T{2};
         parameters.gamma = T(1.4);
         parameters.alpha = T{0}; // Radians.
-        parameters.N_ghost_layers = 3;
         parameters.wall_condition = Solver::BoundaryCondition::AdiabaticWall;
         parameters.wall_temperature = T{1}; // Nondimensional p/rho.
         parameters.CFL = T(1.5);

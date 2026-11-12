@@ -13,6 +13,7 @@ namespace Solver
 		velocity,
         Geometry,
         CellCenter,
+        DJacobien,
         Fluxes,
         All
     };
@@ -90,6 +91,10 @@ namespace Solver
             {
                 detail::copy_cell_views(k_source, k_destination,
                     cellsdata.Cell_Areas, cellsdata.Normals);
+            }
+            if constexpr (Fields == CellCopyFields::DJacobien || Fields == CellCopyFields::Geometry || Fields == CellCopyFields::All)
+            {
+                detail::copy_cell_view(cellsdata.DJacobien, k_source, k_destination);
             }
             if constexpr (Fields == CellCopyFields::Fluxes || Fields == CellCopyFields::All)
             {
