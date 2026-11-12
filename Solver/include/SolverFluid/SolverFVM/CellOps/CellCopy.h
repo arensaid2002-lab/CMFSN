@@ -12,6 +12,7 @@ namespace Solver
         States,
 		velocity,
         Geometry,
+        CellCenter,
         Fluxes,
         All
     };
@@ -80,6 +81,10 @@ namespace Solver
             if constexpr (Fields == CellCopyFields::All)
             {
                 detail::copy_cell_view(cellsdata.Lambdas, k_source, k_destination);
+            }
+            if constexpr (Fields == CellCopyFields::CellCenter || Fields == CellCopyFields::Geometry || Fields == CellCopyFields::All)
+            {
+                detail::copy_cell_view(cellsdata.Cell_Centers, k_source, k_destination);
             }
             if constexpr (Fields == CellCopyFields::Geometry || Fields == CellCopyFields::All)
             {

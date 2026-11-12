@@ -86,5 +86,16 @@ namespace Solver::NumOps
 		}
 		return result;
 	}
+	template <typename T>
+	KOKKOS_INLINE_FUNCTION
+	Kokkos::Array<T, 3> Tau(T mu, const Kokkos::Array<T, 4>& DV)
+	{
+		T Tau_xx = mu * ((T{ 4 } / T{3})*DV[0] - (T{ 2 } / T{ 3 })*DV[3]);
+		T Tau_yy = mu * ((T{ 4 } / T{ 3 }) * DV[3] - (T{ 2 } / T{ 3 }) * DV[0]);
+		T Tau_xy = mu * (DV[1] + DV[2]);
+		return Kokkos::Array<T, 3> {Tau_xx, Tau_yy, Tau_xy};
+	}
+
+
 
 }

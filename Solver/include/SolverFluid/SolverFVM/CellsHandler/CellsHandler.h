@@ -1,15 +1,18 @@
 #pragma once
 
+#include <limits>
+
 #include "CellsHandler/CellsData.h"
 #include "CellOps/CellOps.h"
 
 namespace Solver
 {
-    template <typename ExecSpace = Kokkos::DefaultExecutionSpace, typename T = float>
+    template <typename ExecSpace = Kokkos::DefaultExecutionSpace, typename T = float, SolverTypes SType = SolverTypes::Euler2D>
     class CellsHandler
     {
         public:
             CellsHandler(T Mach_inf, T gamma, T alpha, int N_GhostLayers, const MeshData_Structured<T>& meshdata);
+            CellsHandler(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_GhostLayers, const MeshData_Structured<T>& meshdata);
             ~CellsHandler() = default;
 
             void initialize_cells();

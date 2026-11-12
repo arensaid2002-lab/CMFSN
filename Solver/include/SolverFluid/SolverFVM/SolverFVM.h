@@ -11,7 +11,7 @@ namespace Solver
     template <typename T = float, SolverTypes SType = SolverTypes::Euler2D, TimeEvolutionScheme TEScheme = TimeEvolutionScheme::Steady, RungeKuttaScheme RKScheme = RungeKuttaScheme::Unspecified>
     class SolverFVM
     {
-        static_assert(SType == SolverTypes::Euler2D, "Only the Euler2D solver is implemented");
+        static_assert(SType == SolverTypes::Euler2D || SType == SolverTypes::RANS2D, "Unsupported solver type");
         static_assert(TEScheme != TimeEvolutionScheme::UnSteady || RKScheme != RungeKuttaScheme::Unspecified, "UnSteady mode requires an explicit RungeKuttaScheme");
         static_assert(TEScheme == TimeEvolutionScheme::UnSteady || RKScheme != RungeKuttaScheme::CarpenterKennedy, "Carpenter-Kennedy is only available in UnSteady mode");
 
@@ -20,6 +20,7 @@ namespace Solver
             using StateObserver = std::function<void(const StateInfo&, const CellsData<T>&)>;
             const StateInfo& get_StateInfo() const { return state_info; }
             SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler);
+            SolverFVM(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler);
             void run(int iterations, T CFL = T{1}, int report_interval = 1000, std::ostream* history = nullptr, StateObserver observer = {}, int snapshot_interval = 1, double final_time = std::numeric_limits<double>::infinity());
             void run_until(double final_time, T CFL = T{1}, int report_interval = 1000, std::ostream* history = nullptr, StateObserver observer = {}, int snapshot_interval = 1, int max_iterations = 200000);
             const CellsData<T>& get_CellsData() const { return cells_handler.get_CellsData(); }
@@ -29,7 +30,7 @@ namespace Solver
             double eval_residual_rms(const CellsData<T>& cellsdata);    
         private:
             StateInfo state_info;
-            CellsHandler<Kokkos::DefaultExecutionSpace, T> cells_handler;
+            CellsHandler<Kokkos::DefaultExecutionSpace, T, SType> cells_handler;
     };
 }
 #include "SolverFVM.tpp"

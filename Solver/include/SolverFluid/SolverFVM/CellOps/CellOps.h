@@ -21,6 +21,7 @@ namespace Solver::CellOps
         Conservative_Old,
         Conservative_New,
         Velocity,
+        Temperature,
 		DerivedFields,
         Fluxes,
         Dissipation_History,
@@ -28,7 +29,8 @@ namespace Solver::CellOps
         #pragma endregion
         #pragma region Geometrical Data Fields
         NormalUnitVector,
-        EdgeLength
+        EdgeLength,
+        CellCenter
         #pragma endregion
     };
 
@@ -68,10 +70,19 @@ namespace Solver::CellOps
                 };
                 return Velocity;
             }
+            else if constexpr (Fields == DataFields::Temperature)
+            {
+                return cellsdata.Pressure(k) / cellsdata.rho_old(k);
+            }
             else if constexpr (Fields == DataFields::NormalUnitVector)
             {
                 Kokkos::Array<T, 2> Normals = { cellsdata.Normals(k, direction, 0), cellsdata.Normals(k, direction, 1) };
                 return Normals;
+            }
+            else if constexpr (Fields == DataFields::CellCenter)
+            {
+                Kokkos::Array<T, 2> CellCenter = { cellsdata.Cell_Centers(k, 0), cellsdata.Cell_Centers(k, 1) };
+                return CellCenter;
             }
             else if constexpr (Fields == DataFields::Fluxes)
             {               
@@ -90,7 +101,7 @@ namespace Solver::CellOps
             }
             else
             {
-                static_assert(Fields == DataFields::EdgeLength || Fields == DataFields::Velocity || Fields == DataFields::NormalUnitVector || Fields == DataFields::Fluxes || Fields == DataFields::Dissipation_History || Fields == DataFields::Conservative_Old, "Invalid data field specified");
+                static_assert(Fields == DataFields::EdgeLength || Fields == DataFields::Velocity || Fields == DataFields::Temperature || Fields == DataFields::NormalUnitVector || Fields == DataFields::CellCenter || Fields == DataFields::Fluxes || Fields == DataFields::Dissipation_History || Fields == DataFields::Conservative_Old, "Invalid data field specified");
             }
         }
         
@@ -233,12 +244,12 @@ namespace Solver::CellOps
         template <typename ExecSpace, CellCopyFields Fields = CellCopyFields::All, typename T>
         void ApplyPeriodicity(const CellsData<T>& cellsdata)
         {
-            Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_ghostlayers* cellsdata.Nj_cells), KOKKOS_LAMBDA(int K_g)
+            Kokkos::parallel_for("Periodicity", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_ghostlayers* (cellsdata.Njtotal-1)), KOKKOS_LAMBDA(int K_g)
             {
                 int i_g = K_g % cellsdata.N_ghostlayers;
                 int j_g = K_g / cellsdata.N_ghostlayers;
 
-                const int k_Lcell_destination = Cell_index(i_g, j_g + cellsdata.N_ghostlayers, cellsdata.Nitotal);
+                const int k_Lcell_destination = Cell_index(i_g, j_g, cellsdata.Nitotal);
                 const int k_Lcell_source = k_Lcell_destination + cellsdata.Ni_cells;
                 const int k_Rcell_source = k_Lcell_destination + cellsdata.N_ghostlayers;
                 const int k_Rcell_destination = k_Rcell_source + cellsdata.Ni_cells;
@@ -276,7 +287,7 @@ namespace Solver::CellOps
             });
         }
 
-        template<typename ExecSpace, typename T>
+        template<typename ExecSpace, typename T, SolverTypes SType = SolverTypes::Euler2D>
         void ApplyNonPenetrationConditions(const CellsData<T>& cellsdata, const initialization_data<T>& init_data)
         {
             Kokkos::parallel_for("NonPenetrationConditions", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.Ni_cells * cellsdata.N_ghostlayers), KOKKOS_LAMBDA(int k_g)
@@ -293,7 +304,15 @@ namespace Solver::CellOps
                 //eval velocity reflection
                 auto ghost_normal = -1 * extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_wall, 0);
                 auto RealCell_velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_source);
-                auto GhostCell_velocity = RealCell_velocity - (T)2 * dot(RealCell_velocity, ghost_normal) * ghost_normal;
+                Kokkos::Array<T, 2> GhostCell_velocity;
+                if constexpr (SType == SolverTypes::Euler2D)
+                {
+                    GhostCell_velocity = RealCell_velocity - (T)2 * dot(RealCell_velocity, ghost_normal) * ghost_normal;
+                }
+                if constexpr (SType == SolverTypes::RANS2D)
+                {
+					GhostCell_velocity = -1 * RealCell_velocity;
+                }
                 auto Ghost_State = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_source);
                 Ghost_State[1] = Ghost_State[0] * GhostCell_velocity[0];
                 Ghost_State[2] = Ghost_State[0] * GhostCell_velocity[1];
@@ -381,7 +400,6 @@ namespace Solver::CellOps
         }
 
 
-
         /**
         * Evaluates the geometrical data for a given cell.
         * @param i The cell index in the i-direction.
@@ -425,6 +443,26 @@ namespace Solver::CellOps
             return Normal;
         }
 
+        template<typename T>
+        KOKKOS_FUNCTION
+        Kokkos::Array<T, 4> eval_CellDJacobien(CellsData<T> cellsdata, int k_cell)
+        {
+            int k_side_R = Cell_index_sides(k_cell, cellsdata.Nitotal - 1, 1);
+            int k_side_L = Cell_index_sides(k_cell, cellsdata.Nitotal - 1, 3);
+            int k_side_T = Cell_index_sides(k_cell, cellsdata.Nitotal - 1, 2);
+            int k_side_B = Cell_index_sides(k_cell, cellsdata.Nitotal - 1, 0);
+
+            auto xy_cR = extract_DataField<T, DataFields::CellCenter>(cellsdata, k_side_R);
+            auto xy_cL = extract_DataField<T, DataFields::CellCenter>(cellsdata, k_side_L);
+            auto xy_cT = extract_DataField<T, DataFields::CellCenter>(cellsdata, k_side_T);
+            auto xy_cB = extract_DataField<T, DataFields::CellCenter>(cellsdata, k_side_B);
+
+            auto Dixy = (xy_cR - xy_cL) / T{ 2 };
+            auto Djxy = (xy_cT - xy_cB) / T{ 2 };
+            T J = det2D(Dixy, Djxy);
+            return Kokkos::Array<T, 4>{Dixy[0]/J, Dixy[1]/J, Djxy[0]/J, Djxy[1]/J};
+        }
+
 
         /**
         * Evaluates the area of a given cell.
@@ -435,22 +473,39 @@ namespace Solver::CellOps
         */
         template <typename T>
         KOKKOS_FUNCTION
-        T eval_CellArea(int i, int j, const MeshData_Structured<T>& meshdata)
+        Kokkos::Array<T, 3> eval_CellCenterAreas(int i, int j, const MeshData_Structured<T>& meshdata)
         {
             int Ni = meshdata.Ni;
-            T delta_x1 = meshdata.X(Node_index(i + 1, j + 1, Ni)) - meshdata.X(Node_index(i, j, Ni));
-            T delta_y1 = meshdata.Y(Node_index(i + 1, j + 1, Ni)) - meshdata.Y(Node_index(i, j, Ni));
 
-            T delta_x2 = meshdata.X(Node_index(i, j + 1, Ni)) - meshdata.X(Node_index(i + 1, j, Ni));
-            T delta_y2 = meshdata.Y(Node_index(i, j + 1, Ni)) - meshdata.Y(Node_index(i + 1, j, Ni));
+			//Positions have {x,y} coordinates
+			Kokkos::Array <T, 2> P_1 = { meshdata.X(Node_index(i, j, Ni)), meshdata.Y(Node_index(i, j, Ni)) };
+			Kokkos::Array <T, 2> P_2 = { meshdata.X(Node_index(i + 1, j, Ni)), meshdata.Y(Node_index(i + 1, j, Ni)) };
+			Kokkos::Array <T, 2> P_3 = { meshdata.X(Node_index(i + 1, j + 1, Ni)), meshdata.Y(Node_index(i + 1, j + 1, Ni)) };
+			Kokkos::Array <T, 2> P_4 = { meshdata.X(Node_index(i, j + 1, Ni)), meshdata.Y(Node_index(i, j + 1, Ni)) };
+            
 
-            return T{ 0.5 } * ((delta_x1 * delta_y2 - delta_x2 * delta_y1));
+			auto S_1 = P_4 - P_1;
+			auto S_2 = P_3 - P_1;
+			auto S_3 = P_2 - P_1;
+
+
+			T Cell_Area1 = T{ 0.5 } * det2D(S_2, S_1);
+			T Cell_Area2 = T{ 0.5 } * det2D(S_3, S_2);
+			T Cell_Area = Cell_Area1 + Cell_Area2;
+
+			auto P_center1 = (P_1 + P_3 + P_4) / T{ 3 };
+			auto P_center2 = (P_1 + P_2 + P_3) / T{ 3 };
+			auto P_center = (P_center1 * Cell_Area1 + P_center2 * Cell_Area2) / Cell_Area;
+
+			Kokkos::Array<T, 3> CellCenterAreas = { P_center[0], P_center[1], Cell_Area };
+            return CellCenterAreas;
         }
 
         template <typename ExecSpace, typename T>
         void eval_GeometricalData(const CellsData<T>& cellsdata, const MeshData_Structured<T>& meshdata)
         {
-            Kokkos::parallel_for("eval_geometrical_data", Kokkos::RangePolicy<ExecSpace>(0, meshdata.N_Cells), KOKKOS_LAMBDA(int k_mesh)
+			
+            Kokkos::parallel_for("eval_inner_geometrical_data", Kokkos::RangePolicy<ExecSpace>(0, meshdata.N_Cells), KOKKOS_LAMBDA(int k_mesh)
             {
                 int i = k_mesh % cellsdata.Ni_cells;
                 int j = k_mesh / cellsdata.Ni_cells;
@@ -458,23 +513,151 @@ namespace Solver::CellOps
                 int i_cell = i + cellsdata.N_ghostlayers;
                 int j_cell = j + cellsdata.N_ghostlayers;
                 int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
-                cellsdata.Cell_Areas(k_cell) = eval_CellArea(i, j, meshdata);
+				auto CellCenterAreas = eval_CellCenterAreas(i, j, meshdata);
+                cellsdata.Cell_Areas(k_cell) = CellCenterAreas[2];
+				cellsdata.Cell_Centers(k_cell, 0) = CellCenterAreas[0];
+				cellsdata.Cell_Centers(k_cell, 1) = CellCenterAreas[1];
 
                 for (int direction = 0; direction < cellsdata.N_edges; direction++)
                 {
                     const auto normals = eval_CellNormal(i, j, direction, meshdata);
-
                     cellsdata.Normals(k_cell, direction, 0) = normals[0];
                     cellsdata.Normals(k_cell, direction, 1) = normals[1];
-                    cellsdata.Normals(k_cell, direction, 2) = normals[2];
+                    cellsdata.Normals(k_cell, direction, 2) = normals[2];                    
                 }
+
+            });
+            Kokkos::parallel_for("eval_ghost_wall_center_data", Kokkos::RangePolicy<ExecSpace>(0, (cellsdata.Ni_cells*cellsdata.N_ghostlayers)), KOKKOS_LAMBDA(int k_mesh)
+            {
+				int stride = cellsdata.Nitotal - 1;
+
+                int i_mesh = k_mesh % cellsdata.Ni_cells ;
+                int j_mesh = k_mesh / cellsdata.Ni_cells ;
+
+                int i_cell = i_mesh + cellsdata.N_ghostlayers;
+                int j_cell = j_mesh + cellsdata.N_ghostlayers;
+
+                int k_wall_node = Node_index(i_mesh, 0, cellsdata.Ni_mesh);
+
+                int k_wall = Cell_index(i_cell, cellsdata.N_ghostlayers, cellsdata.Nitotal);
+                int k_cell = k_wall + j_mesh * stride;
+                int k_ghost = k_wall - (j_mesh + 1) * stride;
+
+
+                
+                Kokkos::Array<T, 2> P_reference = {meshdata.X(k_wall_node), meshdata.Y(k_wall_node) };
+				Kokkos::Array<T, 2> P_F1 = { meshdata.X(k_wall_node + 1), meshdata.Y(k_wall_node + 1)};
+				auto P_Cf_relative = (P_F1 - P_reference)/ T{ 2 };
+                auto P_Ccell_relative = (extract_DataField<T, DataFields::CellCenter>(cellsdata, k_cell)) - P_reference;
+				auto P_Cghost_relative = 2 * P_Cf_relative - P_Ccell_relative;
+				auto P_Cghost = P_Cghost_relative + P_reference;
+
+                cellsdata.Cell_Centers(k_ghost, 0) = P_Cghost[0];
+                cellsdata.Cell_Centers(k_ghost, 1) = P_Cghost[1];
+            });
+            Kokkos::parallel_for("eval_ghost_Farfield_center_data", Kokkos::RangePolicy<ExecSpace>(0, (cellsdata.Ni_cells* cellsdata.N_ghostlayers)), KOKKOS_LAMBDA(int k_mesh)
+            {
+                int stride = cellsdata.Nitotal - 1;
+                int i_mesh = k_mesh % cellsdata.Ni_cells;
+                int j_mesh = k_mesh / cellsdata.Ni_cells;
+
+
+                int i_cell = i_mesh + cellsdata.N_ghostlayers;
+				int j_farfield = cellsdata.N_ghostlayers + cellsdata.Nj_cells;
+                int k_Farfield = Cell_index(i_cell, j_farfield, cellsdata.Nitotal);
+				int k_Farfirld_node = Node_index(i_mesh, cellsdata.Nj_mesh - 1, cellsdata.Ni_mesh);
+                int k_cell = k_Farfield - (cellsdata.N_ghostlayers - j_mesh)  * stride;
+                int k_ghost = k_Farfield + (cellsdata.N_ghostlayers- 1 - j_mesh) * stride;
+                
+
+
+
+                Kokkos::Array<T, 2> P_reference = { meshdata.X(k_Farfirld_node), meshdata.Y(k_Farfirld_node) };
+                Kokkos::Array<T, 2> P_F1 = { meshdata.X(k_Farfirld_node + 1), meshdata.Y(k_Farfirld_node + 1) };
+                auto P_Cf_relative = (P_F1 - P_reference) / T{ 2 };
+                auto P_Ccell_relative = (extract_DataField<T, DataFields::CellCenter>(cellsdata, k_cell)) - P_reference;
+                auto P_Cghost_relative = 2 * P_Cf_relative - P_Ccell_relative;
+                auto P_Cghost = P_Cghost_relative + P_reference;
+
+                cellsdata.Cell_Centers(k_ghost, 0) = P_Cghost[0];
+                cellsdata.Cell_Centers(k_ghost, 1) = P_Cghost[1];
+            });
+
+            ApplyPeriodicity<ExecSpace, CellCopyFields::CellCenter>(cellsdata);
+            ExecSpace().fence("Cell centers ready for metrics");
+            Kokkos::parallel_for("eval_inner_DJacobien", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh)
+            {
+                const int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
+                const int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
+                const int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
+                const auto DJacobien = eval_CellDJacobien(cellsdata, k_cell);
+                for (int component = 0; component < 4; ++component)
+                    cellsdata.DJacobien(k_cell, component) = DJacobien[component];
             });
         }
-       
+
+
+        template <typename T, DataFields Field>
+        KOKKOS_INLINE_FUNCTION
+        auto eval_gradient(const CellsData<T>& cellsdata, int k_cell)
+        {
+            int k_side_R = Cell_index_sides(k_cell, cellsdata.Nitotal - 1, 1);
+            int k_side_L = Cell_index_sides(k_cell, cellsdata.Nitotal - 1, 3);
+            int k_side_T = Cell_index_sides(k_cell, cellsdata.Nitotal - 1, 2);
+            int k_side_B = Cell_index_sides(k_cell, cellsdata.Nitotal - 1, 0);
+
+            auto DA_i = (extract_DataField<T, Field>(cellsdata, k_side_R) - extract_DataField<T, Field>(cellsdata, k_side_L)) / T{2};
+			auto DA_j = (extract_DataField<T, Field>(cellsdata, k_side_T) - extract_DataField<T, Field>(cellsdata, k_side_B)) / T{2};
+            
+            auto DAx = cellsdata.DJacobien(k_cell, 3) * DA_i - cellsdata.DJacobien(k_cell, 1)*DA_j;
+            auto DAy = cellsdata.DJacobien(k_cell, 0) * DA_j - cellsdata.DJacobien(k_cell, 2)*DA_i;
+
+
+            if constexpr (Field == DataFields::Velocity)
+            {
+                return Kokkos::Array<T, 4>{DAx[0], DAx[1], DAy[0], DAy[1]};
+            }
+			else if constexpr (Field == DataFields::Temperature)
+            {
+                return Kokkos::Array<T, 2>{DAx, DAy};
+            }
+            else
+            {
+				static_assert(Field == DataFields::Velocity || Field == DataFields::Temperature, "Field must be either Velocity or Temperature");
+            }
+        }
 
         template <typename T>
         KOKKOS_INLINE_FUNCTION
-        Kokkos::Array<T, 4> eval_Fluxes(const CellsData<T>& cellsdata, int k_cell, int direction)
+        Kokkos::Array<T, 4> eval_viscuousDissipation(const CellsData<T>& cellsdata, const initialization_data<T>& data, int k_cell, int direction)
+        {
+
+            int stride = cellsdata.Nitotal - 1;
+			int k_side = Cell_index_sides(k_cell, stride, direction);
+			Kokkos::Array<T, 4> ViscuousDissipation;
+			auto velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
+			auto velocity_side = extract_DataField<T, DataFields::Velocity>(cellsdata, k_side);
+            auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, direction);
+			
+            
+            auto dV = eval_gradient<T, DataFields::Velocity>(cellsdata, k_cell);
+
+            
+            auto tau = Tau(data.mu_inf, dV);
+			auto t_x = normal[0] * tau[0] + normal[1] * tau[2];
+			auto t_y = normal[0] * tau[2] + normal[1] * tau[1];
+			auto V_mean = mean(velocity, velocity_side);
+			auto dtheta = eval_gradient<T, DataFields::Temperature>(cellsdata, k_cell);
+            auto q = -data.k_inf * dot(dtheta, normal);
+
+            ViscuousDissipation = {0, t_x, t_y, V_mean[0]*t_x + V_mean[1]*t_y - q};
+
+            return ViscuousDissipation;
+        }
+
+        template <typename T, SolverTypes SType = SolverTypes::Euler2D>
+        KOKKOS_INLINE_FUNCTION
+        Kokkos::Array<T, 4> eval_Fluxes(const CellsData<T>& cellsdata, const initialization_data<T>& init_data, int k_cell, int direction)
         {
 
             int stride = cellsdata.Nitotal - 1;
@@ -483,13 +666,21 @@ namespace Solver::CellOps
             int k_side = Cell_index_sides(k_cell, stride, direction);
             auto Fluxes_k_cell = extract_DataField<T, DataFields::Fluxes>(cellsdata, k_cell, direction);
             auto Fluxes_k_side = extract_DataField<T, DataFields::Fluxes>(cellsdata, k_side, (direction + 2) % 4);
+            if constexpr (SType == SolverTypes::RANS2D)
+            {
+				auto ViscuousDissipation_cell = eval_viscuousDissipation<T>(cellsdata, init_data, k_cell, direction);
+                auto ViscuousDissipation_side = eval_viscuousDissipation<T>(cellsdata, init_data, k_side, (direction + 2) % 4);
+				Fluxes_k_cell = Fluxes_k_cell - ViscuousDissipation_cell;
+				Fluxes_k_side = Fluxes_k_side - ViscuousDissipation_side;
+            }
+
 			Fluxes_2 = mean<T>(Fluxes_k_cell, -1 * Fluxes_k_side);
             return Fluxes_2;
         }
-        
+
         template <typename T>
         KOKKOS_INLINE_FUNCTION
-        Kokkos::Array<T, 4> eval_Dissipation(const CellsData<T>& cellsdata, int k_cell, int direction)
+        Kokkos::Array<T, 4> eval_ArtDissipation(const CellsData<T>& cellsdata, int k_cell, int direction)
         {
 			int stride = cellsdata.Nitotal - 1;
             
@@ -536,23 +727,39 @@ namespace Solver::CellOps
             return Dissipation;
         }
 
-        
-        template <typename T>
+        template <typename T, SolverTypes SType = SolverTypes::Euler2D>
         KOKKOS_INLINE_FUNCTION
-        Kokkos::pair<Kokkos::Array<T, 4>, Kokkos::Array<T, 4>> eval_All_FluxesDissipation(const CellsData<T>& cellsdata, int k_cell, bool evaluate_dissipation = true)
+        Kokkos::pair<Kokkos::Array<T, 4>, Kokkos::Array<T, 4>> eval_All_FluxesDissipation(const CellsData<T>& cellsdata, const initialization_data<T>& init_data, int k_cell, bool evaluate_dissipation = true)
         {
             Kokkos::Array<T, 4> Fluxes = {0, 0, 0, 0};
             Kokkos::Array<T, 4> Dissipation = {0, 0, 0, 0};
             for (int direction = 0; direction < cellsdata.N_edges; ++direction)
             {
                 const T edge_length = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_cell, direction);
-                Fluxes += edge_length * eval_Fluxes<T>(cellsdata, k_cell, direction);
+                Fluxes += edge_length * eval_Fluxes<T, SType>(cellsdata, init_data, k_cell, direction);
                 if (evaluate_dissipation)
-                    Dissipation += eval_Dissipation<T>(cellsdata, k_cell, direction);
+                    Dissipation += eval_ArtDissipation<T>(cellsdata, k_cell, direction);
             }
             return Kokkos::make_pair(Fluxes, Dissipation);
         }
      
+        template <typename T, SolverTypes SType = SolverTypes::Euler2D>
+        KOKKOS_INLINE_FUNCTION
+        T eval_TimeStep(const CellsData<T>& cellsdata, const initialization_data<T>& init_data, int k_cell, T CFL)
+        {
+            T Lambda = T{0};
+            for (int direction = 0; direction < cellsdata.N_edges; ++direction)
+            {
+                Lambda += T{0.5} * cellsdata.Lambdas(k_cell, direction);
+                if constexpr (SType == SolverTypes::RANS2D)
+                {
+                    const T edge_length = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_cell, direction);
+                    Lambda += (init_data.mu_inf / cellsdata.rho_old(k_cell)) * (T{4}/T{3} + init_data.gamma/init_data.Pr_inf) * edge_length*edge_length / cellsdata.Cell_Areas(k_cell);
+                }
+            }
+            return CFL * cellsdata.Cell_Areas(k_cell) / Lambda;
+        }
+
         template <typename ExecSpace, typename T, SolverTypes SType = SolverTypes::Euler2D, TimeEvolutionScheme TEScheme = TimeEvolutionScheme::Steady>
         T RungeKutta5(CellsData<T>& cellsdata, const initialization_data<T>& init_data, T CFL = T{1}, T max_time_step = std::numeric_limits<T>::max())
         {
@@ -587,18 +794,14 @@ namespace Solver::CellOps
                         int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
 
                         Update_DataField<T, DataFields::DerivedFields>(cellsdata, init_data, k_cell);
-                        T Lambda = (T) 0;
-                        for (int direction = 0; direction < 4; direction++)
-                        {
+                        for (int direction = 0; direction < cellsdata.N_edges; ++direction)
                             Update_DataField<T, DataFields::Fluxes>(cellsdata, k_cell, direction);
-                            Lambda += (T)0.5 * cellsdata.Lambdas(k_cell, direction);
-                        }
-						if (evaluate_time_step)
-                            cellsdata.Time_Step(k_cell) = CFL * cellsdata.Cell_Areas(k_cell) / Lambda;
+                        if (evaluate_time_step)
+                            cellsdata.Time_Step(k_cell) = eval_TimeStep<T, SType>(cellsdata, init_data, k_cell, CFL);
                     });
                     ExecSpace().fence("DerivedFields are ready, preparing ghosts");
                     ApplyPeriodicity<ExecSpace>(cellsdata);
-                    ApplyNonPenetrationConditions<ExecSpace>(cellsdata, init_data);
+                    ApplyNonPenetrationConditions<ExecSpace, T, SType>(cellsdata, init_data);
                     ApplyRiemanInvariantConditions<ExecSpace>(cellsdata, init_data);
                     ExecSpace().fence("GhostCells are ready, RungeKutta is Ready");
             };
@@ -636,7 +839,7 @@ namespace Solver::CellOps
                     int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
                     int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
                     int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
-                    auto Fluxes_Dissipations = eval_All_FluxesDissipation<T>(cellsdata, k_cell, evaluate_dissipation);
+                    auto Fluxes_Dissipations = eval_All_FluxesDissipation<T, SType>(cellsdata, init_data, k_cell, evaluate_dissipation);
                     auto Fluxes = Fluxes_Dissipations.first;
                     Kokkos::Array<T, 4> Dissipations;
 
@@ -709,18 +912,14 @@ namespace Solver::CellOps
                         int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
 
                         Update_DataField<T, DataFields::DerivedFields>(cellsdata, init_data, k_cell);
-                        T Lambda = (T) 0;
-                        for (int direction = 0; direction < 4; direction++)
-                        {
+                        for (int direction = 0; direction < cellsdata.N_edges; ++direction)
                             Update_DataField<T, DataFields::Fluxes>(cellsdata, k_cell, direction);
-                            Lambda += (T)0.5 * cellsdata.Lambdas(k_cell, direction);
-                        }
-						if (evaluate_time_step)
-                            cellsdata.Time_Step(k_cell) = CFL * cellsdata.Cell_Areas(k_cell) / Lambda;
+                        if (evaluate_time_step)
+                            cellsdata.Time_Step(k_cell) = eval_TimeStep<T, SType>(cellsdata, init_data, k_cell, CFL);
                     });
                     ExecSpace().fence("DerivedFields are ready, preparing ghosts");
                     ApplyPeriodicity<ExecSpace>(cellsdata);
-                    ApplyNonPenetrationConditions<ExecSpace>(cellsdata, init_data);
+                    ApplyNonPenetrationConditions<ExecSpace, T, SType>(cellsdata, init_data);
                     ApplyRiemanInvariantConditions<ExecSpace>(cellsdata, init_data);
                     ExecSpace().fence("GhostCells are ready, RungeKutta is Ready");
             };
@@ -753,7 +952,7 @@ namespace Solver::CellOps
                         int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
                         int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
                         int k_cell = Cell_index(i_cell, j_cell, cellsdata.Nitotal);
-                        auto Fluxes_Dissipations = eval_All_FluxesDissipation<T>(cellsdata, k_cell);
+                        auto Fluxes_Dissipations = eval_All_FluxesDissipation<T, SType>(cellsdata, init_data, k_cell);
 						auto G_accumulator = extract_DataField<T, DataFields::Dissipation_History>(cellsdata, k_cell);
                         auto W_0 = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_cell);
                         auto Fluxes = Fluxes_Dissipations.first;

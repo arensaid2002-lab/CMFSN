@@ -195,6 +195,15 @@ namespace Solver::NumOps
         }
         return dot_product;
     }
+    template <typename T>
+    KOKKOS_INLINE_FUNCTION
+    T det2D(const Kokkos::Array<T, 2>& A, const Kokkos::Array<T, 2>& B)
+    {
+        T det2D = A[0] * B[1] - A[1] * B[0];
+
+        
+        return det2D;
+    }
     #pragma endregion
 
 }

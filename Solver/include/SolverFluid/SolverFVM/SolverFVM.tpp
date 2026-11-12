@@ -9,7 +9,13 @@
 namespace Solver
 {
     template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
-    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : cells_handler(Mach_inf, gamma, alpha, N_gLayer, Mesh_Euler)
+    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : SolverFVM(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, N_gLayer, Mesh_Euler)
+    {
+        static_assert(SType == SolverTypes::Euler2D, "RANS2D requires explicit Reynolds and Prandtl numbers");
+    }
+
+    template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
+    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : cells_handler(Mach_inf, gamma, alpha, Re, Pr, N_gLayer, Mesh_Euler)
     {
     }
 
@@ -139,13 +145,14 @@ namespace Solver
     template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
     double SolverFVM<T, SType, TEScheme, RKScheme>::eval_residual_rms(const CellsData<T>& cellsdata)
     {
+		const auto init_data = cells_handler.get_InitializationData();
 		double residual_squared = 0;
 		Kokkos::parallel_reduce("Euler2D_ResidualDiagnostic", Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh, double& sum)
 		{
 			const int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
 			const int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
 			const int k_cell = CellOps::Cell_index(i_cell, j_cell, cellsdata.Nitotal);
-			const auto fluxes_dissipation = CellOps::eval_All_FluxesDissipation<T>(cellsdata, k_cell);
+			const auto fluxes_dissipation = CellOps::eval_All_FluxesDissipation<T, SType>(cellsdata, init_data, k_cell);
 			for (int component = 0; component < 4; ++component)
 			{
 				const double residual = double(fluxes_dissipation.first[component] - fluxes_dissipation.second[component]) / double(cellsdata.Cell_Areas(k_cell));
