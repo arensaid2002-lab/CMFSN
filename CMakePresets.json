@@ -1,103 +1,129 @@
 {
-  "version": 3,
-  "configurePresets": [
-    {
-      "name": "openmp",
-      "displayName": "CPU - OpenMP (Clang)",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/openmp-clang",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "Kokkos_ENABLE_OPENMP": "ON",
-        "Kokkos_ENABLE_CUDA": "OFF",
-        "CMAKE_C_COMPILER": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe",
-        "CMAKE_CXX_COMPILER": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe",
-        "OpenMP_libomp_LIBRARY": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/lib/libomp.lib"
-      },
-      "environment": {
-        "PATH": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin;$penv{PATH}"
-      },
-      "vendor": {
-        "microsoft.com/VisualStudioSettings/CMake/1.0": {
-          "hostOS": [ "Windows" ],
-          "intelliSenseMode": "windows-clangcl-x64"
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "openmp",
+            "displayName": "CPU - OpenMP (Clang)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/openmp-clang",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "Kokkos_ENABLE_OPENMP": "ON",
+                "Kokkos_ENABLE_CUDA": "OFF",
+                "CMAKE_C_COMPILER": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe",
+                "CMAKE_CXX_COMPILER": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe",
+                "OpenMP_libomp_LIBRARY": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/lib/libomp.lib"
+            },
+            "environment": {
+                "PATH": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin;$penv{PATH}"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": [
+                        "Windows"
+                    ],
+                    "intelliSenseMode": "windows-clangcl-x64"
+                }
+            }
+        },
+        {
+            "name": "cuda",
+            "displayName": "GPU - CUDA",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/cuda",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "Kokkos_ENABLE_CUDA": "ON",
+                "Kokkos_ENABLE_OPENMP": "OFF",
+                "Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE": "ON",
+                "CMAKE_CUDA_ARCHITECTURES": "89",
+                "Kokkos_ARCH_ADA89": "ON"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "intelliSenseMode": "windows-msvc-x64",
+                    "intelliSenseOptions": {
+                        "useCompilerDefaults": false,
+                        "additionalCompilerArgs": [
+                            "/std:c++20"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "name": "openmp-debug",
+            "displayName": "CPU - OpenMP Debug",
+            "inherits": "openmp",
+            "binaryDir": "${sourceDir}/build/openmp-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "cuda-debug",
+            "displayName": "GPU - CUDA Debug",
+            "inherits": "cuda",
+            "binaryDir": "${sourceDir}/build/cuda-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "Visual Studio Build Tools 2026 Release - amd64",
+            "displayName": "Visual Studio Build Tools 2026 Release - amd64",
+            "description": "Using compilers for Visual Studio 18 2026 (x64 architecture)",
+            "generator": "Visual Studio 18 2026",
+            "toolset": "host=x64",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+                "CMAKE_C_COMPILER": "cl.exe",
+                "CMAKE_CXX_COMPILER": "cl.exe"
+            }
         }
-      }
-    },
-    {
-      "name": "cuda",
-      "displayName": "GPU - CUDA",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/cuda",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "Kokkos_ENABLE_CUDA": "ON",
-        "Kokkos_ENABLE_OPENMP": "OFF",
-        "Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE": "ON",
-        "CMAKE_CUDA_ARCHITECTURES": "89",
-        "Kokkos_ARCH_ADA89": "ON"
-      },
-      "vendor": {
-        "microsoft.com/VisualStudioSettings/CMake/1.0": {
-          "intelliSenseMode": "windows-msvc-x64",
-          "intelliSenseOptions": {
-            "useCompilerDefaults": false,
-            "additionalCompilerArgs": [ "/std:c++20" ]
-          }
+    ],
+    "testPresets": [
+        {
+            "name": "openmp",
+            "configurePreset": "openmp",
+            "inheritConfigureEnvironment": true,
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "cuda",
+            "configurePreset": "cuda",
+            "inheritConfigureEnvironment": true,
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "openmp-debug",
+            "configurePreset": "openmp-debug",
+            "inheritConfigureEnvironment": true,
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "cuda-debug",
+            "configurePreset": "cuda-debug",
+            "inheritConfigureEnvironment": true,
+            "output": {
+                "outputOnFailure": true
+            }
         }
-      }
-    },
-    {
-      "name": "openmp-debug",
-      "displayName": "CPU - OpenMP Debug",
-      "inherits": "openmp",
-      "binaryDir": "${sourceDir}/build/openmp-debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-    {
-      "name": "cuda-debug",
-      "displayName": "GPU - CUDA Debug",
-      "inherits": "cuda",
-      "binaryDir": "${sourceDir}/build/cuda-debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    }
-  ],
-  "testPresets": [
-    {
-      "name": "openmp",
-      "configurePreset": "openmp",
-      "inheritConfigureEnvironment": true,
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "cuda",
-      "configurePreset": "cuda",
-      "inheritConfigureEnvironment": true,
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "openmp-debug",
-      "configurePreset": "openmp-debug",
-      "inheritConfigureEnvironment": true,
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "cuda-debug",
-      "configurePreset": "cuda-debug",
-      "inheritConfigureEnvironment": true,
-      "output": {
-        "outputOnFailure": true
-      }
-    }
-  ]
+    ],
+    "buildPresets": [
+        {
+            "name": "Visual Studio Build Tools 2026 Release - amd64-debug",
+            "displayName": "Visual Studio Build Tools 2026 Release - amd64 - Debug",
+            "configurePreset": "Visual Studio Build Tools 2026 Release - amd64",
+            "configuration": "Debug"
+        }
+    ]
 }

@@ -332,6 +332,13 @@ namespace Solver::CellOps
                 const T EdgeLength = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_wall, 0);
                 Update_DataField<T, DataFields::NormalUnitVector>(ghost_normal, cellsdata, k_ghost, 2);
                 Update_DataField<T, DataFields::EdgeLength>(EdgeLength, cellsdata, k_ghost, 2);
+                // Ghost adjacent to the wall: metrics of the common face seen from the ghost side
+                // (both local axes are reversed, so the terms are the opposite of the wall cell's).
+                if (k_source == k_wall)
+                {
+                    for (int component = 0; component < 4; ++component)
+                        cellsdata.DJacobien(k_ghost, 2, component) = -cellsdata.DJacobien(k_wall, 0, component);
+                }
                 Update_DataField<T, DataFields::Conservative_Old>(Ghost_State, cellsdata, init_data, k_ghost, 2);
                 Update_DataField<T, DataFields::Fluxes>(cellsdata, k_ghost, 2);
             });
@@ -350,7 +357,6 @@ namespace Solver::CellOps
 
                 Kokkos::Array<T, 4> Ghost_State;
                 const auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, 2);
-				const auto DJacobien = eval_CellDJacobien<T>(cellsdata, k_cell, 2);
                 const auto V_in = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
                 const auto V_inf = Kokkos::Array<T, 2>{ init_data.velocity_u_inf, init_data.velocity_v_inf };
 
@@ -402,6 +408,10 @@ namespace Solver::CellOps
                 }
                 const auto ghost_normal = T{-1} * normal;
                 const T EdgeLength = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_cell, 2);
+                // Ghost adjacent to the farfield: metrics of the common face seen from the ghost side
+                // (both local axes are reversed, so the terms are the opposite of the boundary cell's).
+                for (int component = 0; component < 4; ++component)
+                    cellsdata.DJacobien(k_cell + row_stride, 0, component) = -cellsdata.DJacobien(k_cell, 2, component);
                 for (int layer = 1; layer <= cellsdata.N_ghost_layers; layer++)
                 {
                     const int k_ghost = k_cell + layer * row_stride;
@@ -801,19 +811,76 @@ namespace Solver::CellOps
             return CFL * cellsdata.Cell_Areas(k_cell) / Lambda;
         }
 
+        #pragma region Runge-Kutta shared steps
+        // Storage index (ghost layers included) of the k_mesh-th physical cell.
+        template <typename T>
+        KOKKOS_INLINE_FUNCTION
+        int Physical_Cell_index(const CellsData<T>& cellsdata, int k_mesh)
+        {
+            const int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
+            const int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
+            return Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
+        }
+
+        template <typename T>
+        void RungeKutta_Validate(const CellsData<T>& cellsdata, T CFL, T max_time_step, bool physical_time_step)
+        {
+            if (cellsdata.N_faces != 4 || cellsdata.N_ghost_layers < 3)
+                throw std::invalid_argument("Runge-Kutta requires four faces and at least three ghost layers");
+            if (cellsdata.Ni_physical_cells < cellsdata.N_ghost_layers || cellsdata.Nj_physical_cells < cellsdata.N_ghost_layers)
+                throw std::invalid_argument("Runge-Kutta boundary stencils require enough physical cells for the ghost layers");
+            if (!(CFL > T{0}))
+                throw std::invalid_argument("Runge-Kutta requires a positive CFL");
+            if (physical_time_step && (!(max_time_step > T{0}) || !std::isfinite(max_time_step)))
+                throw std::invalid_argument("Runge-Kutta requires a positive finite physical step limit");
+        }
+
+        // Derived fields and fluxes of the physical cells, then the ghost cells; optionally the local time steps.
+        template <typename ExecSpace, typename T, SolverTypes SType>
+        void RungeKutta_PrepareFields(const CellsData<T>& cellsdata, const initialization_data<T>& init_data, T CFL, bool evaluate_time_step)
+        {
+            Kokkos::parallel_for("RungeKutta_PrepareFields", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh)
+            {
+                const int k_cell = Physical_Cell_index(cellsdata, k_mesh);
+                Update_DataField<T, DataFields::DerivedFields>(cellsdata, init_data, k_cell);
+                for (int direction = 0; direction < cellsdata.N_faces; ++direction)
+                    Update_DataField<T, DataFields::Fluxes>(cellsdata, k_cell, direction);
+                if (evaluate_time_step)
+                    cellsdata.Time_Step(k_cell) = eval_TimeStep<T, SType>(cellsdata, init_data, k_cell, CFL);
+            });
+            ExecSpace().fence("DerivedFields are ready, preparing ghosts");
+            ApplyBoundaryConditions<ExecSpace, T, SType>(cellsdata, init_data);
+            ExecSpace().fence("GhostCells are ready, RungeKutta is Ready");
+        }
+
+        // Global physical time step: smallest local step, capped by max_time_step.
+        template <typename ExecSpace, typename T>
+        T RungeKutta_MinTimeStep(const CellsData<T>& cellsdata, T max_time_step)
+        {
+            T min_time_step = max_time_step;
+            Kokkos::parallel_reduce("RungeKutta_MinTimeStep", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh, T& local_min_time_step)
+            {
+                local_min_time_step = Kokkos::min<T>(local_min_time_step, cellsdata.Time_Step(Physical_Cell_index(cellsdata, k_mesh)));
+            }, Kokkos::Min<T>(min_time_step));
+            return Kokkos::min(min_time_step, max_time_step);
+        }
+
+        // The stage result becomes the current state.
+        template <typename T>
+        void RungeKutta_SwapStates(CellsData<T>& cellsdata)
+        {
+            std::swap(cellsdata.rho_new, cellsdata.rho_old);
+            std::swap(cellsdata.Momentum_u_new, cellsdata.Momentum_u_old);
+            std::swap(cellsdata.Momentum_v_new, cellsdata.Momentum_v_old);
+            std::swap(cellsdata.E_new, cellsdata.E_old);
+        }
+        #pragma endregion
+
+        // Jameson hybrid five-stage scheme: dissipation refreshed at stages 1, 3 and 5.
         template <typename ExecSpace, typename T, SolverTypes SType = SolverTypes::Euler2D, TimeEvolutionScheme TEScheme = TimeEvolutionScheme::Steady>
         T RungeKutta5(CellsData<T>& cellsdata, const initialization_data<T>& init_data, T CFL = T{1}, T max_time_step = std::numeric_limits<T>::max())
         {
-            if (cellsdata.N_faces != 4 || cellsdata.N_ghost_layers < 3)
-                throw std::invalid_argument("RungeKutta5 requires four faces and at least three ghost layers");
-            if (cellsdata.Ni_physical_cells < cellsdata.N_ghost_layers || cellsdata.Nj_physical_cells < cellsdata.N_ghost_layers)
-                throw std::invalid_argument("RungeKutta5 boundary stencils require enough physical cells for the ghost layers");
-            if (!(CFL > T{0}))
-                throw std::invalid_argument("RungeKutta5 requires a positive CFL");
-
-            if constexpr (TEScheme == TimeEvolutionScheme::UnSteady)
-                if (!(max_time_step > T{0}) || !std::isfinite(max_time_step))
-                    throw std::invalid_argument("RungeKutta5 requires a positive finite physical step limit");
+            RungeKutta_Validate(cellsdata, CFL, max_time_step, TEScheme == TimeEvolutionScheme::UnSteady);
 
             Kokkos::deep_copy(cellsdata.rho_0, cellsdata.rho_old);
             Kokkos::deep_copy(cellsdata.Momentum_u_0, cellsdata.Momentum_u_old);
@@ -822,62 +889,21 @@ namespace Solver::CellOps
 
             const Kokkos::Array<T, 5> Alpha = {T{1}/T{4}, T{1}/T{6}, T{3}/T{8}, T{1}/T{2}, T{1}};
             const Kokkos::Array<T, 5> Beta = {T{1}, T{0}, T(0.56), T{0}, T(0.44)};
-            
-            
 
-
-            auto prepare_fields = [&](bool evaluate_time_step)
-            {
-                    Kokkos::parallel_for("RungeKuttaPreparefields", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh)
-                    {
-                        int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-                        int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers; 
-                        int k_cell = Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
-
-                        Update_DataField<T, DataFields::DerivedFields>(cellsdata, init_data, k_cell);
-                        for (int direction = 0; direction < cellsdata.N_faces; ++direction)
-                            Update_DataField<T, DataFields::Fluxes>(cellsdata, k_cell, direction);
-                        if (evaluate_time_step)
-                            cellsdata.Time_Step(k_cell) = eval_TimeStep<T, SType>(cellsdata, init_data, k_cell, CFL);
-                    });
-                    ExecSpace().fence("DerivedFields are ready, preparing ghosts");
-                    ApplyBoundaryConditions<ExecSpace, T, SType>(cellsdata, init_data);
-                    ExecSpace().fence("GhostCells are ready, RungeKutta is Ready");
-            };
-            
-
-            T min_time_step = T{ 0 };
+            T min_time_step = T{0};
 
             for (int KuntaStep = 0; KuntaStep < 5; ++KuntaStep)
             {
-                prepare_fields(KuntaStep == 0);
-
+                RungeKutta_PrepareFields<ExecSpace, T, SType>(cellsdata, init_data, CFL, KuntaStep == 0);
                 if constexpr (TEScheme == TimeEvolutionScheme::UnSteady)
-                {
                     if (KuntaStep == 0)
-                    {
-
-						Kokkos::parallel_reduce("RungeKutta5_MinTimeStep", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh, T & local_min_time_step)
-						{
-							int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-							int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-							int k_cell = Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
-						    local_min_time_step = Kokkos::min<T>(local_min_time_step, cellsdata.Time_Step(k_cell));
-						}, Kokkos::Min<T>(min_time_step));
-                        min_time_step = Kokkos::min(min_time_step, max_time_step);
-                    }
-					
-                    
-
-                }
+                        min_time_step = RungeKutta_MinTimeStep<ExecSpace, T>(cellsdata, max_time_step);
 
                 const bool evaluate_dissipation = KuntaStep == 0 || KuntaStep == 2 || KuntaStep == 4;
 
                 Kokkos::parallel_for("RungeKutta5_UpdateState", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh)
                 {
-                    int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-                    int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-                    int k_cell = Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
+                    const int k_cell = Physical_Cell_index(cellsdata, k_mesh);
                     auto Fluxes_Dissipations = eval_All_FluxesDissipation<T, SType>(cellsdata, init_data, k_cell, evaluate_dissipation);
                     auto Fluxes = Fluxes_Dissipations.first;
                     Kokkos::Array<T, 4> Dissipations;
@@ -903,117 +929,53 @@ namespace Solver::CellOps
                     const auto W_new = W_0 - Alpha[KuntaStep] * time_step * Residual / cellsdata.Cell_Areas(k_cell);
                     Update_DataField<T, DataFields::Conservative_New>(W_new, cellsdata, init_data, k_cell);
                 });
-            
 
-
-                std::swap(cellsdata.rho_new, cellsdata.rho_old);
-                std::swap(cellsdata.Momentum_u_new, cellsdata.Momentum_u_old);
-                std::swap(cellsdata.Momentum_v_new, cellsdata.Momentum_v_old);
-                std::swap(cellsdata.E_new, cellsdata.E_old);
+                RungeKutta_SwapStates(cellsdata);
             }
             // Return with derived fields and ghost cells matching the final state.
-            prepare_fields(false);
+            RungeKutta_PrepareFields<ExecSpace, T, SType>(cellsdata, init_data, CFL, false);
             return min_time_step; // Physical time increment; zero for local steady marching.
         }
 
+        // Carpenter-Kennedy fourth-order, five-stage, low-storage (2N) scheme:
+        //   G = A[stage] * G + dt * L(W),   W = W + B[stage] * G,   with L(W) = -(Fluxes - Dissipation) / Area.
+        // Only the current state and the accumulator G (kept in D_history) are stored.
         template <typename ExecSpace, typename T, SolverTypes SType = SolverTypes::Euler2D, TimeEvolutionScheme TEScheme = TimeEvolutionScheme::UnSteady>
         T RungeKuttaCarpenterKennedy5(CellsData<T>& cellsdata, const initialization_data<T>& init_data, T CFL = T{1}, T max_time_step = std::numeric_limits<T>::max())
         {
             static_assert(TEScheme == TimeEvolutionScheme::UnSteady, "Carpenter-Kennedy is only available in UnSteady mode");
-            if (cellsdata.N_faces != 4 || cellsdata.N_ghost_layers < 3)
-                throw std::invalid_argument("RungeKuttaCarpenterKennedy5 requires four faces and at least three ghost layers");
-            if (cellsdata.Ni_physical_cells < cellsdata.N_ghost_layers || cellsdata.Nj_physical_cells < cellsdata.N_ghost_layers)
-                throw std::invalid_argument("RungeKuttaCarpenterKennedy5 boundary stencils require enough physical cells for the ghost layers");
-            if (!(CFL > T{0}))
-                throw std::invalid_argument("RungeKuttaCarpenterKennedy5 requires a positive CFL");
+            RungeKutta_Validate(cellsdata, CFL, max_time_step, true);
 
-            if constexpr (TEScheme == TimeEvolutionScheme::UnSteady)
-                if (!(max_time_step > T{0}) || !std::isfinite(max_time_step))
-                    throw std::invalid_argument("RungeKuttaCarpenterKennedy5 requires a positive finite physical step limit");
-
-            Kokkos::deep_copy(cellsdata.rho_0, cellsdata.rho_old);
-            Kokkos::deep_copy(cellsdata.Momentum_u_0, cellsdata.Momentum_u_old);
-            Kokkos::deep_copy(cellsdata.Momentum_v_0, cellsdata.Momentum_v_old);
-            Kokkos::deep_copy(cellsdata.Energy_0, cellsdata.E_old);
-
-            
             const Kokkos::Array<T, 5> A = { T{ 0 }, -T(567301805773LL) / T(1357537059087LL), -T(2404267990393LL) / T(2016746695238LL), -T(3550918686646LL) / T(2091501179385LL), -T(1275806237668LL) / T(842570457699LL) };
             const Kokkos::Array<T, 5> B = { T(1432997174477LL) / T(9575080441755LL), T(5161836677717LL) / T(13612068292357LL), T(1720146321549LL) / T(2090206949498LL), T(3134564353537LL) / T(4481467310338LL), T(2277821191437LL) / T(14882151754819LL) };
-            
 
-
-            auto prepare_fields = [&](bool evaluate_time_step)
-            {
-                    Kokkos::parallel_for("RungeKuttaPreparefields", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh)
-                    {
-                        int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-                        int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers; 
-                        int k_cell = Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
-
-                        Update_DataField<T, DataFields::DerivedFields>(cellsdata, init_data, k_cell);
-                        for (int direction = 0; direction < cellsdata.N_faces; ++direction)
-                            Update_DataField<T, DataFields::Fluxes>(cellsdata, k_cell, direction);
-                        if (evaluate_time_step)
-                            cellsdata.Time_Step(k_cell) = eval_TimeStep<T, SType>(cellsdata, init_data, k_cell, CFL);
-                    });
-                    ExecSpace().fence("DerivedFields are ready, preparing ghosts");
-                    ApplyBoundaryConditions<ExecSpace, T, SType>(cellsdata, init_data);
-                    ExecSpace().fence("GhostCells are ready, RungeKutta is Ready");
-            };
-            
-
-            T min_time_step = T{ 0 };
+            T time_step = T{0};
 
             for (int KuntaStep = 0; KuntaStep < 5; ++KuntaStep)
             {
-                prepare_fields(KuntaStep == 0);
+                RungeKutta_PrepareFields<ExecSpace, T, SType>(cellsdata, init_data, CFL, KuntaStep == 0);
+                if (KuntaStep == 0)
+                    time_step = RungeKutta_MinTimeStep<ExecSpace, T>(cellsdata, max_time_step);
 
-                if constexpr (TEScheme == TimeEvolutionScheme::UnSteady)
+                Kokkos::parallel_for("RungeKuttaCarpenterKennedy5_UpdateState", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh)
                 {
-                    if (KuntaStep == 0)
-                    {
+                    const int k_cell = Physical_Cell_index(cellsdata, k_mesh);
+                    const auto Fluxes_Dissipations = eval_All_FluxesDissipation<T, SType>(cellsdata, init_data, k_cell);
+                    const auto Residual = Fluxes_Dissipations.first - Fluxes_Dissipations.second;
+                    // The first stage starts a new accumulator: nothing is carried over from the previous time step.
+                    Kokkos::Array<T, 4> G_accumulator = T{-1} * time_step * Residual / cellsdata.Cell_Areas(k_cell);
+                    if (KuntaStep > 0)
+                        G_accumulator = A[KuntaStep] * extract_DataField<T, DataFields::Dissipation_History>(cellsdata, k_cell) + G_accumulator;
+                    const auto W_old = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_cell);
+                    const auto W_new = W_old + B[KuntaStep] * G_accumulator;
+                    Update_DataField<T, DataFields::Dissipation_History>(G_accumulator, cellsdata, k_cell);
+                    Update_DataField<T, DataFields::Conservative_New>(W_new, cellsdata, init_data, k_cell);
+                });
 
-						Kokkos::parallel_reduce("RungeKuttaCarpenterKennedy5_MinTimeStep", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh, T & local_min_time_step)
-						{
-							int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-							int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-							int k_cell = Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
-						    local_min_time_step = Kokkos::min<T>(local_min_time_step, cellsdata.Time_Step(k_cell));
-						}, Kokkos::Min<T>(min_time_step));
-                        min_time_step = Kokkos::min(min_time_step, max_time_step);
-                    }
-					
-                    
-                    Kokkos::parallel_for("RungeKuttaCarpenterKennedy5_CarpenterKennedyUpdateState", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh)
-                    {
-                        int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-                        int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
-                        int k_cell = Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
-                        auto Fluxes_Dissipations = eval_All_FluxesDissipation<T, SType>(cellsdata, init_data, k_cell);
-						auto G_accumulator = extract_DataField<T, DataFields::Dissipation_History>(cellsdata, k_cell);
-                        auto W_0 = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_cell);
-                        auto Fluxes = Fluxes_Dissipations.first;
-						auto Dissipations = Fluxes_Dissipations.second;
-                        auto Residual = Fluxes - Dissipations;
-						auto L = T{-1} * Residual / cellsdata.Cell_Areas(k_cell);
-                        
-						G_accumulator = A[KuntaStep] * G_accumulator + min_time_step* L;
-                        auto W_new = W_0 + B[KuntaStep] * G_accumulator;
-						Update_DataField<T, DataFields::Dissipation_History>(G_accumulator, cellsdata, k_cell);
-                        Update_DataField<T, DataFields::Conservative_New>(W_new, cellsdata, init_data, k_cell);
-
-                    });
-                }
-
-
-
-                std::swap(cellsdata.rho_new, cellsdata.rho_old);
-                std::swap(cellsdata.Momentum_u_new, cellsdata.Momentum_u_old);
-                std::swap(cellsdata.Momentum_v_new, cellsdata.Momentum_v_old);
-                std::swap(cellsdata.E_new, cellsdata.E_old);
+                RungeKutta_SwapStates(cellsdata);
             }
             // Return with derived fields and ghost cells matching the final state.
-            prepare_fields(false);
-            return min_time_step; // Physical time increment; zero for local steady marching.
+            RungeKutta_PrepareFields<ExecSpace, T, SType>(cellsdata, init_data, CFL, false);
+            return time_step; // Physical time increment.
         }
 }

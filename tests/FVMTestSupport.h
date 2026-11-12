@@ -51,7 +51,7 @@ namespace Tests
         Mesh::MeshData_Structured<T> mesh;
         CellsData<T> cells;
         initialization_data<T> init;
-        Fixture(bool curved=false):mesh(make_mesh<T>(curved)),cells(mesh),init(T(.2),T(1.4),T{0},T{250},T(.72))
+        Fixture(bool curved=false):mesh(make_mesh<T>(curved)),cells(mesh),init({T(.2),T(1.4),T{0},T{250},T(.72)})
         {
             eval_GeometricalData<E>(cells,mesh);E().fence();
             uniform(T{1},T(1.2),T(.2),T(.3));

@@ -42,15 +42,19 @@ fortement etiree.
 
 ## Configuration visqueuse
 
-Le constructeur avec Reynolds et Prandtl accepte a la fin la condition
-thermique puis sa temperature. Le nombre de couches fantomes est fixe a trois
-par `CellsData<T>::N_ghost_layers` et ne fait plus partie des arguments des
-constructeurs. La paroi par defaut est adiabatique.
+Le solveur a un seul constructeur : les conditions d'ecoulement
+(`Solver::FlowConditions<T>`) puis le maillage. Les champs non renseignes
+gardent leur valeur par defaut (Reynolds infini, paroi adiabatique). Le nombre
+de couches fantomes est fixe a trois par `CellsData<T>::N_ghost_layers`.
 
 ```cpp
-Solver::SolverFVM<T, Solver::SolverTypes::RANS2D, TimeScheme, RKScheme> solver(
-    Mach, gamma, alpha, Re, Pr, mesh,
-    Solver::BoundaryCondition::isothermalWall, wall_temperature);
+Solver::FlowConditions<T> flow;
+flow.Mach_inf = Mach;
+flow.Re_inf = Re;
+flow.Pr_inf = Pr;
+flow.wall_condition = Solver::BoundaryCondition::isothermalWall;
+flow.wall_temperature = wall_temperature;
+Solver::SolverFVM<T, Solver::SolverTypes::RANS2D, TimeScheme, RKScheme> solver(flow, mesh);
 ```
 
 La temperature utilise la convention adimensionnelle `theta = p/rho`, avec

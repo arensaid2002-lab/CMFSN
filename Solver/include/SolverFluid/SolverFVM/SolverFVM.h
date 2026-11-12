@@ -19,8 +19,7 @@ namespace Solver
             struct StateInfo { int iteration = 0; double physical_time = 0; T time_step = T{0}; };
             using StateObserver = std::function<void(const StateInfo&, const CellsData<T>&)>;
             const StateInfo& get_StateInfo() const { return state_info; }
-            SolverFVM(T Mach_inf, T gamma, T alpha, const MeshData_Structured<T>& Mesh_Euler);
-            SolverFVM(T Mach_inf, T gamma, T alpha, T Re, T Pr, const MeshData_Structured<T>& Mesh_Euler, BoundaryCondition wall_condition = BoundaryCondition::AdiabaticWall, T wall_temperature = T{1});
+            SolverFVM(const FlowConditions<T>& flow, const MeshData_Structured<T>& mesh) : cells_handler(flow, mesh) {}
             void run(int iterations, T CFL = T{1}, int report_interval = 1000, std::ostream* history = nullptr, StateObserver observer = {}, int snapshot_interval = 1, double final_time = std::numeric_limits<double>::infinity());
             void run_until(double final_time, T CFL = T{1}, int report_interval = 1000, std::ostream* history = nullptr, StateObserver observer = {}, int snapshot_interval = 1, int max_iterations = 200000);
             const CellsData<T>& get_CellsData() const { return cells_handler.get_CellsData(); }

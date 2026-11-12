@@ -1,10 +1,12 @@
 """Inspect CMFSN structured-grid exports without interpolating cell values.
 
 Install: python -m pip install -r UI/requirements.txt
-Launch:  python UI/visualize.py results/solution.pvd
-Single:  python UI/visualize.py results/solution.vts
-Zoom:    python UI/visualize.py results/solution.vts --bounds -0.25 1.25 -0.75 0.75
-Image:   python UI/visualize.py results/solution.vts --screenshot results/pressure.png
+Latest:  python UI/visualize.py                 (most recent results/run_*/solution)
+Series:  python UI/visualize.py results/run_0001/solution.pvd
+Single:  python UI/visualize.py results/run_0001/solution.vts
+Zoom:    python UI/visualize.py results/run_0001/solution.vts --bounds -0.25 1.25 -0.75 0.75
+Image:   python UI/visualize.py results/run_0001/solution.vts --screenshot pressure.png
+Keys:    Space play/pause, F5 reload, Ctrl+O open, Ctrl+S export image
 """
 from __future__ import annotations
 
@@ -22,12 +24,13 @@ import pyvista as pv
 FIELDS = {
     "pressure": "Pression",
     "mach": "Mach",
-    "density": "Densite",
+    "density": "Densité",
+    "temperature": "Température (p/ρ)",
     "cp": "Coefficient de pression Cp",
     "velocity_u": "Vitesse u",
     "velocity_v": "Vitesse v",
     "speed": "Norme de la vitesse",
-    "energy": "Energie totale / volume",
+    "energy": "Énergie totale / volume",
 }
 
 
@@ -43,7 +46,36 @@ def prepare_solution(mesh) -> pv.StructuredGrid:
     mesh.cell_data["velocity_u"] = velocity[:, 0]
     mesh.cell_data["velocity_v"] = velocity[:, 1]
     mesh.cell_data["speed"] = np.linalg.norm(velocity, axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mesh.cell_data["temperature"] = np.asarray(mesh.cell_data["pressure"]) / np.asarray(mesh.cell_data["density"])
     return mesh
+
+
+def latest_solution(roots=None):
+    """Most recently written run, searched from the working directory and the repository."""
+    roots = roots or (Path.cwd(), Path(__file__).resolve().parent.parent)
+    patterns = ("results/run_*/solution.*", "build/*/results/run_*/solution.*", "out/build/*/results/run_*/solution.*")
+    found = {path.resolve() for root in roots for pattern in patterns for path in Path(root).glob(pattern) if path.suffix.lower() in (".pvd", ".vts")}
+    return max(found, key=lambda path: path.stat().st_mtime, default=None)
+
+
+def flow_summary(mesh) -> str:
+    """Free-stream conditions stored with the solution, when present."""
+    parts = []
+    if "mach_inf" in mesh.field_data:
+        parts.append(f"M∞ = {float(mesh.field_data['mach_inf'][0]):.4g}")
+    if "alpha_rad" in mesh.field_data:
+        parts.append(f"α = {np.degrees(float(mesh.field_data['alpha_rad'][0])):.4g}°")
+    return " · ".join(parts)
+
+
+def wall_distribution(mesh):
+    """Cp (pressure when Cp is absent) in the row of cells touching the wall (j = 0), against x."""
+    name = "cp" if "cp" in mesh.cell_data else "pressure"
+    ni, nj, _ = mesh.dimensions
+    x = np.asarray(mesh.points).reshape(nj, ni, 3)[:2, :, 0]
+    centers = .25 * (x[0, :-1] + x[0, 1:] + x[1, :-1] + x[1, 1:])
+    return name, centers, np.asarray(mesh.cell_data[name]).reshape(nj - 1, ni - 1)[0]
 
 
 def load_solution(path: Path) -> pv.StructuredGrid:
@@ -357,11 +389,15 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
             brand = QtWidgets.QVBoxLayout()
             brand.setSpacing(0)
             brand.addWidget(QtWidgets.QLabel("CMFSN", objectName="brand"))
-            brand.addWidget(QtWidgets.QLabel("POST-TRAITEMENT  /  EULER 2D", objectName="subtitle"))
+            brand.addWidget(QtWidgets.QLabel("POST-TRAITEMENT  /  ÉCOULEMENT 2D", objectName="subtitle"))
             top.addLayout(brand)
             top.addStretch()
             self.file_label = QtWidgets.QLabel(objectName="filename")
             top.addWidget(self.file_label)
+            reload_button = QtWidgets.QPushButton("Actualiser")
+            reload_button.setToolTip("Relire le fichier et l'historique (F5), par exemple pendant un calcul en cours. La vue est conservée.")
+            reload_button.clicked.connect(self.reload)
+            top.addWidget(reload_button)
             open_button = QtWidgets.QPushButton("Ouvrir une solution…", objectName="primary")
             open_button.clicked.connect(self.open_file)
             top.addWidget(open_button)
@@ -464,6 +500,9 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
             self.time_label = QtWidgets.QLabel(objectName="muted")
             self.time_label.setMinimumWidth(155)
             timeline.addWidget(self.time_label)
+            self.loop_checkbox = QtWidgets.QCheckBox("Boucle")
+            self.loop_checkbox.setToolTip("Reprendre au premier état à la fin de la lecture.")
+            timeline.addWidget(self.loop_checkbox)
             timeline.addWidget(QtWidgets.QLabel("FPS cible", objectName="muted"))
             self.frame_rate = QtWidgets.QSpinBox()
             self.frame_rate.setRange(1, 60)
@@ -515,10 +554,15 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
             layout = QtWidgets.QVBoxLayout(curve)
             layout.setContentsMargins(18, 12, 18, 6)
             row = QtWidgets.QHBoxLayout()
-            row.addWidget(QtWidgets.QLabel("Convergence", objectName="title"))
+            self.curve_title = QtWidgets.QLabel("Convergence", objectName="title")
+            row.addWidget(self.curve_title)
             row.addStretch()
             self.curve_summary = QtWidgets.QLabel(objectName="muted")
             row.addWidget(self.curve_summary)
+            self.curve_combo = QtWidgets.QComboBox()
+            self.curve_combo.addItems(["Convergence", "Distribution à la paroi"])
+            self.curve_combo.currentIndexChanged.connect(self.change_curve)
+            row.addWidget(self.curve_combo)
             layout.addLayout(row)
             self.figure = Figure(figsize=(10, 2), facecolor="white", layout="constrained")
             self.canvas = FigureCanvasQTAgg(self.figure)
@@ -528,7 +572,7 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
             self.canvas.setFixedHeight(205)
             layout.addWidget(self.canvas)
             center.addWidget(curve)
-            footer = QtWidgets.QLabel("  Coordonnées du maillage réel · Zoom à la molette · Déplacement à la souris", objectName="muted")
+            footer = QtWidgets.QLabel("  Coordonnées du maillage réel · Zoom à la molette · Déplacement à la souris · Espace : lecture/pause · F5 : actualiser", objectName="muted")
             footer.setContentsMargins(22, 0, 0, 10)
             outer.addWidget(footer)
             self.sequence = None
@@ -541,23 +585,30 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
             self.playing = False
             self._next_frame_deadline = 0.0
             self.engine = None
+            self._history_sequence = None
+            for keys, action in (("Space", self.toggle_playback), ("F5", self.reload), ("Ctrl+O", self.open_file), ("Ctrl+S", self.save_image)):
+                QtGui.QShortcut(QtGui.QKeySequence(keys), self, activated=action)
             if self.plotter.iren is not None:
                 self.plotter.iren.add_observer("EndInteractionEvent", self.refresh_vectors)
             self.set_solution(solution, field=field, history_override=history_path, requested_bounds=bounds, frame=frame)
 
-        def set_solution(self, path, *, field="pressure", history_override=None, requested_bounds=None, frame=0):
+        def set_solution(self, path, *, field="pressure", history_override=None, requested_bounds=None, frame=0, keep_view=False):
             sequence = SolutionSequence(path)
+            if keep_view:  # Reload: the series may have grown or shrunk; a negative frame means the last one.
+                frame = len(sequence) - 1 if frame < 0 else min(frame, len(sequence) - 1)
             mesh = sequence.read(frame)
             history_file = history_override or Path(path).with_name("residuals.csv")
             history = load_history(history_file) if history_file.exists() else None
             self.stop_playback()
             self.sequence = sequence
             self.history = history
+            self.history_file = history_file
             duration = execution_time_text(history)
             self.execution_time_label.setText(duration)
             self.execution_time_caption.setText("Dernière mesure du calcul" if duration != "Indisponible" else "Durée non enregistrée dans l’historique")
             self.path = Path(path)
-            self.locked_ranges = {}
+            if not keep_view:
+                self.locked_ranges = {}
             self.file_label.setText(self.path.name)
             self.file_label.setToolTip(str(self.path.resolve()))
             self.frame_slider.blockSignals(True)
@@ -571,7 +622,15 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
             self.frame_slider.setEnabled(len(sequence) > 1)
             self.frame_spin.setEnabled(len(sequence) > 1)
             self.play_button.setEnabled(len(sequence) > 1)
-            self.display_frame(frame, field=field, bounds=requested_bounds, mesh=mesh, preserve_camera=False)
+            self.display_frame(frame, field=field, bounds=requested_bounds, mesh=mesh, preserve_camera=keep_view and self.engine is not None)
+
+        def reload(self):
+            """Read the same solution again, keeping the field, the camera and the locked colour ranges."""
+            following_end = len(self.sequence) > 1 and self.frame_index == len(self.sequence) - 1
+            try:
+                self.set_solution(self.path, field=self.engine.current_field, history_override=self.history_file, frame=-1 if following_end else self.frame_index, keep_view=True)
+            except (OSError, ValueError, RuntimeError) as error:
+                QtWidgets.QMessageBox.critical(self, "Actualisation impossible", str(error))
 
         def display_frame(self, index, *, field=None, bounds=None, mesh=None, preserve_camera=True):
             mesh = self.sequence.read(index) if mesh is None else mesh
@@ -601,11 +660,12 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
                 self.engine.set_edges(self.edges.isChecked())
                 self.apply_color_range()
                 iteration = int(mesh.field_data["iteration"][0]) if "iteration" in mesh.field_data else None
-                self.mesh_label.setText(f"{mesh.dimensions[0]-1:,} × {mesh.dimensions[1]-1:,} cellules\n{mesh.n_cells:,} cellules physiques" + (f"\nItération {iteration:,}" if iteration is not None else ""))
+                conditions = flow_summary(mesh)
+                self.mesh_label.setText((f"{conditions}\n" if conditions else "") + f"{mesh.dimensions[0]-1:,} × {mesh.dimensions[1]-1:,} cellules\n{mesh.n_cells:,} cellules physiques" + (f"\nItération {iteration:,}" if iteration is not None else ""))
                 time_value = self.sequence.times[index]
                 self.time_label.setText(f"t = {time_value:.8g}\n{index + 1} / {len(self.sequence)} états" if np.isfinite(time_value) else "Solution unique")
                 self.time_label.setToolTip("Temps physique dans les unités du calcul.")
-                self.draw_history()
+                self.draw_curve()
                 self.refresh_vectors()
                 self.update_stats()
             finally:
@@ -653,11 +713,14 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
                 self.schedule_next_frame()
 
         def advance_frame(self):
-            if self.frame_index + 1 >= len(self.sequence):
-                self.stop_playback()
-            else:
+            if self.frame_index + 1 < len(self.sequence):
                 self.frame_slider.setValue(self.frame_index + 1)
                 self.schedule_next_frame()
+            elif self.loop_checkbox.isChecked():
+                self.frame_slider.setValue(0)
+                self.schedule_next_frame()
+            else:
+                self.stop_playback()
 
         def change_color_lock(self, checked):
             self.locked_ranges = {}
@@ -720,6 +783,41 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
                 if headless:
                     self.refresh_image()
 
+        def change_curve(self, index):
+            self.curve_title.setText(self.curve_combo.currentText())
+            self._history_sequence = None  # Either curve is drawn from scratch after a switch.
+            if self.engine is not None:
+                self.draw_curve()
+
+        def draw_curve(self):
+            if self.curve_combo.currentIndex() == 1:
+                self.draw_wall()
+            else:
+                self.draw_history()
+
+        def style_axes(self, axes, xlabel, ylabel):
+            axes.set_facecolor("white")
+            axes.set_xlabel(xlabel, color="#64748b", fontsize=9)
+            axes.set_ylabel(ylabel, color="#64748b", fontsize=9)
+            axes.grid(True, which="major", color="#e8edf4", linewidth=.7)
+            axes.tick_params(colors="#64748b", labelsize=8)
+            for spine in axes.spines.values():
+                spine.set_color("#dce4ef")
+
+        def draw_wall(self):
+            """Cp against x in the cells touching the wall, for the displayed state."""
+            self.history_marker = None
+            self._history_background = None
+            name, x, values = wall_distribution(self.engine.mesh)
+            self.figure.clear()
+            axes = self.figure.add_subplot(111)
+            axes.plot(x, values, color="#168b80", linewidth=1.2, marker="o", markersize=2.5)
+            if name == "cp":
+                axes.invert_yaxis()  # Aerodynamic convention: suction upwards.
+            self.style_axes(axes, "x", "Cp" if name == "cp" else "Pression")
+            self.curve_summary.setText(f"{x.size} cellules · première rangée à la paroi" + (" · axe Cp inversé" if name == "cp" else ""))
+            self.canvas.draw()
+
         def draw_history(self):
             if getattr(self, "_history_sequence", None) is self.sequence:
                 if self.history_marker is not None:
@@ -738,7 +836,6 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
             self._history_background = None
             self.figure.clear()
             axes = self.figure.add_subplot(111)
-            axes.set_facecolor("white")
             axes.callbacks.connect("xlim_changed", self.invalidate_history_background)
             axes.callbacks.connect("ylim_changed", self.invalidate_history_background)
             if self.history is not None:
@@ -754,12 +851,7 @@ def create_window(solution, *, field="pressure", history_path=None, bounds=None,
             else:
                 axes.text(.5, .5, "Historique de convergence non fourni", ha="center", va="center", transform=axes.transAxes, color="#75849a")
                 self.curve_summary.setText("")
-            axes.set_xlabel("Temps physique (unités du calcul)" if self.history is not None and use_time else "Itération", color="#64748b", fontsize=9)
-            axes.set_ylabel("RMS spatial", color="#64748b", fontsize=9)
-            axes.grid(True, which="major", color="#e8edf4", linewidth=.7)
-            axes.tick_params(colors="#64748b", labelsize=8)
-            for spine in axes.spines.values():
-                spine.set_color("#dce4ef")
+            self.style_axes(axes, "Temps physique (unités du calcul)" if self.history is not None and use_time else "Itération", "RMS spatial")
             self.canvas.draw()
 
         def invalidate_history_background(self, *args):
@@ -836,6 +928,10 @@ def main(argv=None):
     from PySide6 import QtWidgets
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
     configure_theme(app)
+    if args.solution is None:
+        args.solution = latest_solution()
+        if args.solution is not None:
+            print(f"Solution la plus récente : {args.solution}")
     if args.solution is None:
         chosen, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Ouvrir une solution CMFSN", "", "Solutions VTK (*.vts *.pvd)")
         if not chosen:

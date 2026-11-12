@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include "SolverTypes.h"
 
 #include "MeshFormat.h"
@@ -82,25 +83,32 @@ namespace Solver
         int N_total_cells, Ni_total_cells, Nj_total_cells;
     };
 
+    // Free-stream and wall conditions chosen by the user; every field can be set by name.
     template <typename T = float>
-    struct initialization_data
+    struct FlowConditions
     {
-        initialization_data(T Mach_inf, T gamma, T alpha, T Re, T Pr, BoundaryCondition wall_condition_ = BoundaryCondition::AdiabaticWall, T wall_temperature_ = T{1}) : gamma(gamma), Mach_inf(Mach_inf), alpha(alpha), Re_inf(Re), Pr_inf(Pr), wall_condition(wall_condition_), wall_temperature(wall_temperature_)
+        T Mach_inf = T{0}, gamma = T(1.4), alpha = T{0}; // alpha is in radians.
+        T Re_inf = std::numeric_limits<T>::infinity(), Pr_inf = T{1}; // Only used by the viscous solver.
+        BoundaryCondition wall_condition = BoundaryCondition::AdiabaticWall;
+        T wall_temperature = T{1}; // Same nondimensional temperature convention as p/rho.
+    };
+
+    // Flow conditions completed with the derived free-stream state.
+    template <typename T = float>
+    struct initialization_data : FlowConditions<T>
+    {
+        initialization_data(const FlowConditions<T>& flow) : FlowConditions<T>(flow)
         {
-            c_inf = sqrt(gamma); // alpha is in radians.
-            velocity_u_inf = Mach_inf * c_inf * cos(alpha);
-            velocity_v_inf = Mach_inf * c_inf * sin(alpha);
-			mu_inf = Mach_inf * c_inf / Re_inf;
-			k_inf = (gamma/(gamma - 1)) *mu_inf / Pr_inf;
+            c_inf = sqrt(flow.gamma);
+            velocity_u_inf = flow.Mach_inf * c_inf * cos(flow.alpha);
+            velocity_v_inf = flow.Mach_inf * c_inf * sin(flow.alpha);
+            mu_inf = flow.Mach_inf * c_inf / flow.Re_inf;
+            k_inf = (flow.gamma / (flow.gamma - 1)) * mu_inf / flow.Pr_inf;
             Momentum_u_inf = rho_inf * velocity_u_inf;
             Momentum_v_inf = rho_inf * velocity_v_inf;
-            E_inf = NumOps::eval_Energy<T>(rho_inf, velocity_u_inf, velocity_v_inf, P_inf, gamma);
+            E_inf = NumOps::eval_Energy<T>(rho_inf, velocity_u_inf, velocity_v_inf, P_inf, flow.gamma);
         }
-        T rho_inf = T{ 1.0 }, P_inf = T{ 1.0 }, theta_inf = T{1.0}, mu_inf, k_inf,  c_inf, gamma, Mach_inf, velocity_u_inf, velocity_v_inf, alpha;
+        T rho_inf = T{ 1.0 }, P_inf = T{ 1.0 }, theta_inf = T{1.0}, mu_inf, k_inf, c_inf, velocity_u_inf, velocity_v_inf;
         T Momentum_u_inf, Momentum_v_inf, E_inf; // E_inf is total energy per unit volume.
-        T Re_inf, Pr_inf;
-        BoundaryCondition wall_condition;
-        T wall_temperature; // Same nondimensional temperature convention as p/rho.
-
     };
 }

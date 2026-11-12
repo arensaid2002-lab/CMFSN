@@ -165,7 +165,7 @@ template<typename T> void farfield()
         const double un=mach*ci,u=un*nx-.1*ny,v=un*ny+.1*nx;
         f.uniform(T{1},T(1.2),T(u),T(v));
         const T alpha=T(std::atan2(ny,nx)+(mach<0?std::acos(-1.):0.));
-        initialization_data<T> init(T(std::abs(mach)),T(1.4),alpha,T{250},T(.72));
+        initialization_data<T> init({T(std::abs(mach)),T(1.4),alpha,T{250},T(.72)});
         ApplyRiemanInvariantConditions<E>(f.cells,init);E().fence();
         const auto rho=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),f.cells.rho_old);
         const auto p=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),f.cells.Pressure);
@@ -274,22 +274,22 @@ template<typename T> void constructors()
 {
     const auto mesh=make_mesh<T>();
     using Viscous=SolverFVM<T,SolverTypes::RANS2D>;
-    SolverFVM<T> euler(T(.2),T(1.4),T{0},mesh);
-    Viscous iso(T(.2),T(1.4),T{0},T{250},T(.72),mesh,BoundaryCondition::isothermalWall,T(.9));
+    SolverFVM<T> euler({T(.2),T(1.4),T{0}},mesh);
+    Viscous iso({T(.2),T(1.4),T{0},T{250},T(.72),BoundaryCondition::isothermalWall,T(.9)},mesh);
     require(iso.get_InitializationData().wall_condition==BoundaryCondition::isothermalWall,"Wall selector lost");
     near(iso.get_InitializationData().wall_temperature,.9,tolerance<T>(),"Wall temperature lost");
     near(iso.get_InitializationData().mu_inf,double(T(.2)*std::sqrt(T(1.4))/T{250}),tolerance<T>(),"Reynolds not propagated");
-    invalid([&]{Viscous bad(T(.2),T(1.4),T{0},T{0},T(.72),mesh);},"Zero Reynolds accepted");
-    invalid([&]{Viscous bad(T(.2),T(1.4),T{0},T{250},T{0},mesh);},"Zero Prandtl accepted");
-    invalid([&]{Viscous bad(T(.2),T{1},T{0},T{250},T(.72),mesh);},"Invalid gamma accepted");
-    invalid([&]{Viscous bad(T(.2),T(1.4),T{0},T{250},T(.72),mesh,BoundaryCondition::isothermalWall,T{0});},"Nonpositive wall temperature accepted");
+    invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{0},T(.72)},mesh);},"Zero Reynolds accepted");
+    invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{250},T{0}},mesh);},"Zero Prandtl accepted");
+    invalid([&]{Viscous bad({T(.2),T{1},T{0},T{250},T(.72)},mesh);},"Invalid gamma accepted");
+    invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{250},T(.72),BoundaryCondition::isothermalWall,T{0}},mesh);},"Nonpositive wall temperature accepted");
     invalid([&]{euler.run(-1);},"Negative iteration limit accepted");
 }
 template<typename T,bool Carpenter> void rk()
 {
     const auto mesh=make_mesh<T>();
     constexpr auto scheme=Carpenter?RungeKuttaScheme::CarpenterKennedy:RungeKuttaScheme::Jameson;
-    SolverFVM<T,SolverTypes::RANS2D,TimeEvolutionScheme::UnSteady,scheme> solver(T(.2),T(1.4),T{0},T{250},T(.72),mesh);
+    SolverFVM<T,SolverTypes::RANS2D,TimeEvolutionScheme::UnSteady,scheme> solver({T(.2),T(1.4),T{0},T{250},T(.72)},mesh);
     std::ostringstream history;
     solver.run_until(1e-6,T(.05),1000,&history,{},1,100);
     near(solver.get_StateInfo().physical_time,1e-6,1e-12,"Final time not reached");
