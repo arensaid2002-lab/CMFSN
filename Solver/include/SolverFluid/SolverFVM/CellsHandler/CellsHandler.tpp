@@ -5,21 +5,27 @@
 namespace Solver
 {
     template <typename ExecSpace, typename T, SolverTypes SType>
-    CellsHandler<ExecSpace, T, SType>::CellsHandler(T Mach_inf, T gamma, T alpha, int N_GhostLayers, const MeshData_Structured<T>& meshdata) : CellsHandler(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, N_GhostLayers, meshdata)
+    CellsHandler<ExecSpace, T, SType>::CellsHandler(T Mach_inf, T gamma, T alpha, int N_ghost_layers, const MeshData_Structured<T>& meshdata) : CellsHandler(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, N_ghost_layers, meshdata)
     {
         static_assert(SType == SolverTypes::Euler2D, "RANS2D requires explicit Reynolds and Prandtl numbers");
     }
 
     template <typename ExecSpace, typename T, SolverTypes SType>
-    CellsHandler<ExecSpace, T, SType>::CellsHandler(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_GhostLayers, const MeshData_Structured<T>& meshdata) : CellsData_(N_GhostLayers, meshdata), init_data_(Mach_inf, gamma, alpha, Re, Pr), MeshData_(meshdata)
+    CellsHandler<ExecSpace, T, SType>::CellsHandler(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_ghost_layers, const MeshData_Structured<T>& meshdata, BoundaryCondition wall_condition, T wall_temperature) : CellsData_(N_ghost_layers, meshdata), init_data_(Mach_inf, gamma, alpha, Re, Pr, wall_condition, wall_temperature), MeshData_(meshdata)
     {
-        if (CellsData_.N_edges != 4 || N_GhostLayers < 1 || CellsData_.Ni_cells < N_GhostLayers || CellsData_.Nj_cells < N_GhostLayers)
+        if (CellsData_.N_faces != 4 || N_ghost_layers < 1 || CellsData_.Ni_physical_cells < N_ghost_layers || CellsData_.Nj_physical_cells < N_ghost_layers)
             throw std::invalid_argument("Cell initialization requires four faces and enough physical cells for the ghost layers");
-        if (!(gamma > T{1}))
+        if (!(gamma > T{1}) || !std::isfinite(gamma))
             throw std::invalid_argument("Euler initialization requires gamma greater than one");
         if constexpr (SType == SolverTypes::RANS2D)
             if (!(Re > T{0}) || !std::isfinite(Re) || !(Pr > T{0}) || !std::isfinite(Pr))
                 throw std::invalid_argument("RANS2D requires positive finite Reynolds and Prandtl numbers");
+        if (!(Mach_inf >= T{0}) || !std::isfinite(Mach_inf) || !std::isfinite(alpha))
+            throw std::invalid_argument("Mach must be nonnegative and finite, and incidence finite");
+        if (wall_condition != BoundaryCondition::AdiabaticWall && wall_condition != BoundaryCondition::isothermalWall)
+            throw std::invalid_argument("Unknown wall boundary condition");
+        if (wall_condition == BoundaryCondition::isothermalWall && (!(wall_temperature > T{0}) || !std::isfinite(wall_temperature)))
+            throw std::invalid_argument("Isothermal wall temperature must be positive, finite and nondimensional");
         CellOps::eval_GeometricalData<ExecSpace>(CellsData_, MeshData_);
         ExecSpace().fence("Cell geometry ready");
         initialize_cells();
@@ -32,12 +38,12 @@ namespace Solver
         const auto cellsdata = CellsData_;
         CellOps::ApplyInitialConditions<ExecSpace>(cellsdata, init_data_);
         ExecSpace().fence("Initial conservative and derived fields ready");
-        Kokkos::parallel_for("InitializeCellFluxes", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh)
+        Kokkos::parallel_for("InitializeCellFluxes", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh)
         {
-            const int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
-            const int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
-            const int k_cell = CellOps::Cell_index(i_cell, j_cell, cellsdata.Nitotal);
-            for (int direction = 0; direction < cellsdata.N_edges; ++direction)
+            const int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
+            const int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
+            const int k_cell = CellOps::Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
+            for (int direction = 0; direction < cellsdata.N_faces; ++direction)
                 CellOps::Update_DataField<T, CellOps::DataFields::Fluxes>(cellsdata, k_cell, direction);
         });
         ExecSpace().fence("Initial physical fluxes ready");
@@ -46,9 +52,7 @@ namespace Solver
     template <typename ExecSpace, typename T, SolverTypes SType>
     void CellsHandler<ExecSpace, T, SType>::initialize_ghosts()
     {
-        CellOps::ApplyPeriodicity<ExecSpace>(CellsData_);
-        CellOps::ApplyNonPenetrationConditions<ExecSpace, T, SType>(CellsData_, init_data_);
-        CellOps::ApplyRiemanInvariantConditions<ExecSpace>(CellsData_, init_data_);
+        CellOps::ApplyBoundaryConditions<ExecSpace, T, SType>(CellsData_, init_data_);
         ExecSpace().fence("Initial ghost fields ready");
     }
 }

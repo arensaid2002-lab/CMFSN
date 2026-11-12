@@ -102,7 +102,7 @@ namespace IO
     void Export_Solution(const string& path, const MeshData_Structured<T>& meshdata, const CellData& cellsdata, const InitData& init_data, int iteration, double physical_time, double time_step)
     {
         static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>, "VTK export requires float or double");
-        if (meshdata.Ni < 2 || meshdata.Nj < 2 || cellsdata.Ni_cells != meshdata.Ni - 1 || cellsdata.Nj_cells != meshdata.Nj - 1 || iteration < 0)
+        if (meshdata.Ni < 2 || meshdata.Nj < 2 || cellsdata.Ni_physical_cells != meshdata.Ni - 1 || cellsdata.Nj_physical_cells != meshdata.Nj - 1 || iteration < 0)
             throw std::invalid_argument("Solution export requires matching mesh/cell dimensions and a nonnegative iteration");
         const auto destination = std::filesystem::path(path);
         if (!destination.parent_path().empty())
@@ -119,7 +119,7 @@ namespace IO
         const auto momentum_v = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, cellsdata.Momentum_v_old);
         const auto energy = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, cellsdata.E_old);
         const std::uint64_t nodes = std::uint64_t(meshdata.Ni) * std::uint64_t(meshdata.Nj);
-        const std::uint64_t cells = std::uint64_t(cellsdata.Ni_cells) * std::uint64_t(cellsdata.Nj_cells);
+        const std::uint64_t cells = std::uint64_t(cellsdata.Ni_physical_cells) * std::uint64_t(cellsdata.Nj_physical_cells);
         if (x.extent(0) != nodes || y.extent(0) != nodes)
             throw std::invalid_argument("Solution export found incomplete mesh coordinates");
         const char* vtk_type = sizeof(T) == 4 ? "Float32" : "Float64";
@@ -160,11 +160,11 @@ namespace IO
         for (int field = 0; field < array_count; ++field)
         {
             const int components = field == 7 ? 3 : 1;
-            for (int j = 0; j < cellsdata.Nj_cells; ++j)
-                for (int i = 0; i < cellsdata.Ni_cells; ++i)
+            for (int j = 0; j < cellsdata.Nj_physical_cells; ++j)
+                for (int i = 0; i < cellsdata.Ni_physical_cells; ++i)
                 {
-                    const int k = i + cellsdata.N_ghostlayers + (cellsdata.Nitotal - 1) * (j + cellsdata.N_ghostlayers);
-                    const std::size_t cell = std::size_t(i) + std::size_t(cellsdata.Ni_cells) * j;
+                    const int k = i + cellsdata.N_ghost_layers + (cellsdata.Ni_total_cells) * (j + cellsdata.N_ghost_layers);
+                    const std::size_t cell = std::size_t(i) + std::size_t(cellsdata.Ni_physical_cells) * j;
                     const T density = rho(k), u = momentum_u(k) / density, v = momentum_v(k) / density;
                     const T pressure = (init_data.gamma - T{1}) * (energy(k) - T(0.5) * density * (u * u + v * v));
                     const T sound_speed = std::sqrt(init_data.gamma * pressure / density);

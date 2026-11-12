@@ -9,7 +9,7 @@ namespace Mesh
     template <typename T = float>
     struct MeshData_Structured
     {
-        int Ni{}, Nj{}, N_nodes{}, N_edges{ 4 }, N_Cells{};
+        int Ni{}, Nj{}, N_nodes{}, N_faces{ 4 }, N_Cells{};
 
         Kokkos::View<const T*, Kokkos::LayoutLeft> X, Y;
     };

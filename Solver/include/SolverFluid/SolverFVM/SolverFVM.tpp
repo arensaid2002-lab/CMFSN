@@ -9,13 +9,13 @@
 namespace Solver
 {
     template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
-    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : SolverFVM(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, N_gLayer, Mesh_Euler)
+    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, int N_ghost_layers, const MeshData_Structured<T>& Mesh_Euler) : SolverFVM(Mach_inf, gamma, alpha, std::numeric_limits<T>::infinity(), T{1}, N_ghost_layers, Mesh_Euler)
     {
         static_assert(SType == SolverTypes::Euler2D, "RANS2D requires explicit Reynolds and Prandtl numbers");
     }
 
     template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
-    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_gLayer, const MeshData_Structured<T>& Mesh_Euler) : cells_handler(Mach_inf, gamma, alpha, Re, Pr, N_gLayer, Mesh_Euler)
+    SolverFVM<T, SType, TEScheme, RKScheme>::SolverFVM(T Mach_inf, T gamma, T alpha, T Re, T Pr, int N_ghost_layers, const MeshData_Structured<T>& Mesh_Euler, BoundaryCondition wall_condition, T wall_temperature) : cells_handler(Mach_inf, gamma, alpha, Re, Pr, N_ghost_layers, Mesh_Euler, wall_condition, wall_temperature)
     {
     }
 
@@ -122,14 +122,14 @@ namespace Solver
     template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
     typename SolverFVM<T, SType, TEScheme, RKScheme>::Diagnostics SolverFVM<T, SType, TEScheme, RKScheme>::eval_diagnostics(const CellsData<T>& cellsdata)
     {
-        if (cellsdata.N_cells_mesh < 1)
+        if (cellsdata.N_physical_cells < 1)
             throw std::invalid_argument("Diagnostics require physical cells");
         Diagnostics result;
-        Kokkos::parallel_reduce("Euler2D_StateDiagnostics", Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh, T& min_density, T& min_pressure, int& invalid)
+        Kokkos::parallel_reduce("Euler2D_StateDiagnostics", Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh, T& min_density, T& min_pressure, int& invalid)
         {
-            const int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
-            const int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
-            const int k_cell = CellOps::Cell_index(i_cell, j_cell, cellsdata.Nitotal);
+            const int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
+            const int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
+            const int k_cell = CellOps::Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
             const T density = cellsdata.rho_old(k_cell), pressure = cellsdata.Pressure(k_cell);
             if (Kokkos::isfinite(density) && density < min_density)
                 min_density = density;
@@ -147,11 +147,11 @@ namespace Solver
     {
 		const auto init_data = cells_handler.get_InitializationData();
 		double residual_squared = 0;
-		Kokkos::parallel_reduce("Euler2D_ResidualDiagnostic", Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, cellsdata.N_cells_mesh), KOKKOS_LAMBDA(int k_mesh, double& sum)
+		Kokkos::parallel_reduce("Euler2D_ResidualDiagnostic", Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, cellsdata.N_physical_cells), KOKKOS_LAMBDA(int k_mesh, double& sum)
 		{
-			const int i_cell = k_mesh % cellsdata.Ni_cells + cellsdata.N_ghostlayers;
-			const int j_cell = k_mesh / cellsdata.Ni_cells + cellsdata.N_ghostlayers;
-			const int k_cell = CellOps::Cell_index(i_cell, j_cell, cellsdata.Nitotal);
+			const int i_cell = k_mesh % cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
+			const int j_cell = k_mesh / cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers;
+			const int k_cell = CellOps::Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
 			const auto fluxes_dissipation = CellOps::eval_All_FluxesDissipation<T, SType>(cellsdata, init_data, k_cell);
 			for (int component = 0; component < 4; ++component)
 			{
@@ -159,6 +159,6 @@ namespace Solver
 				sum += residual * residual;
 			}
 		}, residual_squared);
-		return std::sqrt(residual_squared / (4.0 * cellsdata.N_cells_mesh));
+		return std::sqrt(residual_squared / (4.0 * cellsdata.N_physical_cells));
     }
 }

@@ -20,4 +20,9 @@ namespace Solver
         Jameson,
         CarpenterKennedy,
     };
+    enum class BoundaryCondition
+    {
+		AdiabaticWall,
+		isothermalWall,
+    };
 }

@@ -65,5 +65,39 @@
         "CMAKE_BUILD_TYPE": "Debug"
       }
     }
+  ],
+  "testPresets": [
+    {
+      "name": "openmp",
+      "configurePreset": "openmp",
+      "inheritConfigureEnvironment": true,
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cuda",
+      "configurePreset": "cuda",
+      "inheritConfigureEnvironment": true,
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "openmp-debug",
+      "configurePreset": "openmp-debug",
+      "inheritConfigureEnvironment": true,
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cuda-debug",
+      "configurePreset": "cuda-debug",
+      "inheritConfigureEnvironment": true,
+      "output": {
+        "outputOnFailure": true
+      }
+    }
   ]
 }

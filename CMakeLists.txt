@@ -46,16 +46,21 @@ ENDIF()
 
 if(MSVC)
     foreach(kokkos_target IN ITEMS kokkoscore kokkoscontainers)
-        target_compile_definitions(${kokkos_target} PRIVATE
-            _CRT_SECURE_NO_WARNINGS
-        )
+        if(TARGET ${kokkos_target})
+            get_target_property(kokkos_imported ${kokkos_target} IMPORTED)
+            if(NOT kokkos_imported)
+                target_compile_definitions(${kokkos_target} PRIVATE
+                    _CRT_SECURE_NO_WARNINGS
+                )
 
-        target_compile_options(${kokkos_target} PRIVATE
-            "$<$<COMPILE_LANGUAGE:CXX>:/wd4244>"
-            "$<$<COMPILE_LANGUAGE:CXX>:/wd4267>"
-            "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/wd4244>"
-            "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/wd4267>"
-        )
+                target_compile_options(${kokkos_target} PRIVATE
+                    "$<$<COMPILE_LANGUAGE:CXX>:/wd4244>"
+                    "$<$<COMPILE_LANGUAGE:CXX>:/wd4267>"
+                    "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/wd4244>"
+                    "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/wd4267>"
+                )
+            endif()
+        endif()
     endforeach()
 endif()
 
@@ -91,6 +96,8 @@ if(Kokkos_ENABLE_CUDA AND MSVC)
 endif()
 ##===========Tests===========##
 include(CTest)
-enable_testing()
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
 
 
