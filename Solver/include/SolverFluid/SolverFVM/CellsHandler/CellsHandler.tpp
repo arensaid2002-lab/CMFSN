@@ -6,17 +6,25 @@
 
 namespace Solver
 {
-    template <typename ExecSpace, typename T, SolverTypes SType>
-    CellsHandler<ExecSpace, T, SType>::CellsHandler(const FlowConditions<T>& flow, const MeshData_Structured<T>& meshdata) : CellsData_(meshdata), init_data_(flow), MeshData_(meshdata)
+    // Euler2D ignores the Reynolds number: the stored conditions are inviscid (mu_inf = k_inf = 0).
+    template <typename T>
+    FlowConditions<T> inviscid(FlowConditions<T> flow)
     {
-        const auto positive = [](T value) { return value > T{0} && std::isfinite(value); };
+        flow.Re_inf = std::numeric_limits<T>::infinity();
+        return flow;
+    }
+
+    template <typename ExecSpace, typename T, SolverTypes SType>
+    CellsHandler<ExecSpace, T, SType>::CellsHandler(const FlowConditions<T>& flow, const MeshData_Structured<T>& meshdata) : CellsData_(meshdata), init_data_(SType == SolverTypes::Euler2D ? inviscid(flow) : flow), MeshData_(meshdata)
+    {
+        const auto positive = [](T value) { return value > T{0} && Kokkos::isfinite(value); };
         if (CellsData_.N_faces != 4 ||
             CellsData_.Ni_physical_cells < CellsData<T>::N_ghost_layers ||
             CellsData_.Nj_physical_cells < CellsData<T>::N_ghost_layers)
             throw std::invalid_argument("Cell initialization requires four faces and enough physical cells for the ghost layers");
-        if (!(flow.gamma > T{1}) || !std::isfinite(flow.gamma))
+        if (!(flow.gamma > T{1}) || !Kokkos::isfinite(flow.gamma))
             throw std::invalid_argument("Euler initialization requires gamma greater than one");
-        if (!(flow.Mach_inf >= T{0}) || !std::isfinite(flow.Mach_inf) || !std::isfinite(flow.alpha))
+        if (!(flow.Mach_inf >= T{0}) || !Kokkos::isfinite(flow.Mach_inf) || !Kokkos::isfinite(flow.alpha))
             throw std::invalid_argument("Mach must be nonnegative and finite, and incidence finite");
         if constexpr (SType == SolverTypes::RANS2D)
             if (!positive(flow.Re_inf) || !positive(flow.Pr_inf))

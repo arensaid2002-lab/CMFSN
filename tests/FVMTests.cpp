@@ -29,6 +29,34 @@ template<typename T> void physical_fluxes(const CellsData<T>& cells)
         for(int d=0;d<4;++d) Update_DataField<T,DataFields::Fluxes>(cells,k,d);
     });
 }
+// Inviscid fluxes of the ghost rows touching the wall and the farfield, through the face they share with the domain.
+template<typename T> void boundary_ghost_fluxes(const CellsData<T>& cells)
+{
+    Kokkos::parallel_for("TestGhostFluxes",Kokkos::RangePolicy<E>(0,cells.Ni_physical_cells),KOKKOS_LAMBDA(int i){
+        Update_DataField<T,DataFields::Fluxes>(cells,Cell_index(i+3,2,cells.Ni_total_cells),2);
+        Update_DataField<T,DataFields::Fluxes>(cells,Cell_index(i+3,3+cells.Nj_physical_cells,cells.Ni_total_cells),0);
+    });
+}
+// Metrics stored in the ghost row j for its face d (the one shared with the domain),
+// against a reference rebuilt from the cell centres as seen from the ghost cell.
+template<typename T> void ghost_metrics(const Fixture<T>& f,int j,int d,const std::string& message)
+{
+    const auto centers=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),f.cells.Cell_Centers);
+    const auto metrics=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),f.cells.DJacobien);
+    const int offset[4]={-f.cells.Ni_total_cells,1,f.cells.Ni_total_cells,-1};
+    for(int i=3;i<3+f.cells.Ni_physical_cells;++i)
+    {
+        const int k=f.index(i,j),other=k+offset[d],p=offset[(d+1)%4],m=offset[(d+3)%4];
+        long double a[2],b[2];
+        for(int c=0;c<2;++c) {a[c]=(long double)centers(other,c)-centers(k,c);b[c]=((long double)centers(k+p,c)-centers(k+m,c)+centers(other+p,c)-centers(other+m,c))/4;}
+        const long double det=a[0]*b[1]-a[1]*b[0],ref[4]={a[0]/det,a[1]/det,b[0]/det,b[1]/det};
+        for(int c=0;c<4;++c)
+        {
+            near(metrics(k,d,c),double(ref[c]),tolerance<T>(),message);
+            near(metrics(k,d,c)+metrics(other,(d+2)%4,c),0,tolerance<T>(),message+" (opposite of the physical cell)");
+        }
+    }
+}
 template<typename T> void indexing()
 {
     auto mesh=make_mesh<T>();CellsData<T> cells(mesh);
@@ -92,6 +120,9 @@ template<typename T> void geometry()
                 for(int c=0;c<4;++c) near(metrics(k,d,c),double(ref[c]),tolerance<T>(),"Face metric");
             }
         }
+        // The geometry alone must provide the ghost-side metrics of the wall and farfield faces.
+        ghost_metrics(f,2,2,"Wall ghost face metric");
+        ghost_metrics(f,3+f.cells.Nj_physical_cells,0,"Farfield ghost face metric");
     }
 }
 template<typename T> void gradients()
@@ -229,8 +260,12 @@ template<typename T> void jst()
 
 template<typename T> void viscous_flux()
 {
-    Fixture<T> f(true);const auto cells=f.cells;affine_fields(cells);physical_fluxes(cells);
-    const auto init=f.init;
+    Fixture<T> f(true);const auto cells=f.cells;const auto init=f.init;
+    // The boundary conditions give the ghost rows their normals (their face metrics come from the geometry);
+    // the affine field then replaces every state, ghosts included, so the analytic tractions hold up to the boundaries.
+    ApplyWallConditions<E,T,SolverTypes::RANS2D,BoundaryCondition::AdiabaticWall>(cells,init,T{1});
+    ApplyRiemanInvariantConditions<E>(cells,init);E().fence();
+    affine_fields(cells);physical_fluxes(cells);boundary_ghost_fluxes(cells);
     Kokkos::View<T***> results("test_flux",cells.N_physical_cells,4,12);
     Kokkos::parallel_for("TestFlux",Kokkos::RangePolicy<E>(0,cells.N_physical_cells),KOKKOS_LAMBDA(int p){
         const int k=Cell_index(p%cells.Ni_physical_cells+3,p/cells.Ni_physical_cells+3,cells.Ni_total_cells);
@@ -250,9 +285,12 @@ template<typename T> void viscous_flux()
         const double nx=normals(k,d,0),ny=normals(k,d,1),mu=init.mu_inf;
         near(result(p,d,1),mu*(.1*nx+.05*ny),tolerance<T>(),"Viscous x traction");
         near(result(p,d,2),mu*(.05*nx+.2*ny),tolerance<T>(),"Viscous y traction");
-        const bool interior=(d==0&&j>0)||(d==1&&i+1<cells.Ni_physical_cells)||(d==2&&j+1<cells.Nj_physical_cells)||(d==3&&i>0);
-        // Both states, metrics, normals and fluxes are prepared on these interior faces.
-        if(interior) for(int c=0;c<4;++c) near(result(p,d,8+c),result(p,d,c),tolerance<T>(),"Viscous flux sign");
+        // Wall (d==0, j==0) and farfield (d==2, last j) faces are included: the full viscous flux must cross them, not half of it.
+        // Only the i-boundaries are left out: this test grid is not periodic.
+        const bool assembled=d==0||d==2||(d==1&&i+1<cells.Ni_physical_cells)||(d==3&&i>0);
+        const bool boundary=(d==0&&j==0)||(d==2&&j+1==cells.Nj_physical_cells);
+        // Compared in units of mu: the viscous fluxes are of order mu, well below the tolerance of an unscaled comparison in float.
+        if(assembled) for(int c=0;c<4;++c) near(result(p,d,8+c)/mu,result(p,d,c)/mu,20*tolerance<T>(),boundary?"Boundary viscous flux is not the full flux":"Viscous flux sign");
         if((d==1&&i+1<cells.Ni_physical_cells)||(d==2&&j+1<cells.Nj_physical_cells))
         {
             const int neighbour=p+(d==1?1:cells.Ni_physical_cells);
@@ -283,6 +321,13 @@ template<typename T> void constructors()
     invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{250},T{0}},mesh);},"Zero Prandtl accepted");
     invalid([&]{Viscous bad({T(.2),T{1},T{0},T{250},T(.72)},mesh);},"Invalid gamma accepted");
     invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{250},T(.72),BoundaryCondition::isothermalWall,T{0}},mesh);},"Nonpositive wall temperature accepted");
+    invalid([&]{Viscous bad({T(.2)},mesh);},"Viscous solver accepted the default infinite Reynolds");
+    FlowConditions<T> named;named.Mach_inf=T(.3);named.Re_inf=T{100};
+    Viscous by_name(named,mesh);
+    near(by_name.get_InitializationData().gamma,1.4,tolerance<T>(),"Default gamma lost");
+    near(by_name.get_InitializationData().Pr_inf,1,tolerance<T>(),"Default Prandtl lost");
+    require(by_name.get_InitializationData().wall_condition==BoundaryCondition::AdiabaticWall,"Default wall is not adiabatic");
+    near(by_name.get_InitializationData().velocity_u_inf,double(T(.3))*std::sqrt(1.4),tolerance<T>(),"Free-stream velocity not derived");
     invalid([&]{euler.run(-1);},"Negative iteration limit accepted");
 }
 template<typename T,bool Carpenter> void rk()
@@ -296,6 +341,34 @@ template<typename T,bool Carpenter> void rk()
     require(solver.get_StateInfo().iteration>0,"No physical step executed");
     const auto diagnostics=solver.eval_diagnostics(solver.get_CellsData());
     require(diagnostics.invalid_cells==0&&std::isfinite(diagnostics.residual_rms),"Invalid laminar smoke state");
+
+    // Stage storage left by a previous step must not leak into the next one.
+    Kokkos::deep_copy(solver.get_CellsData().D_history,std::numeric_limits<T>::quiet_NaN());
+    solver.run_until(2e-6,T(.05),1000,nullptr,{},1,100);
+    const auto after=solver.eval_diagnostics(solver.get_CellsData());
+    require(after.invalid_cells==0&&std::isfinite(after.residual_rms),"Stale stage storage leaked into the new step");
+
+    if constexpr(Carpenter)
+    {
+        // One short step from the same state: both schemes are consistent, so their increments must agree to leading order.
+        SolverFVM<T,SolverTypes::RANS2D,TimeEvolutionScheme::UnSteady,RungeKuttaScheme::CarpenterKennedy> carpenter({T(.2),T(1.4),T{0},T{250},T(.72)},mesh);
+        SolverFVM<T,SolverTypes::RANS2D,TimeEvolutionScheme::UnSteady,RungeKuttaScheme::Jameson> jameson({T(.2),T(1.4),T{0},T{250},T(.72)},mesh);
+        const auto fields=[](const CellsData<T>& cells){return std::array{Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.rho_old),Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Momentum_u_old),Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Momentum_v_old),Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.E_old)};};
+        const auto start=fields(carpenter.get_CellsData());
+        carpenter.run(1,T(.05),1000,nullptr,{},1,1e-4);jameson.run(1,T(.05),1000,nullptr,{},1,1e-4);
+        near(carpenter.get_StateInfo().time_step,jameson.get_StateInfo().time_step,0,"Schemes did not take the same step");
+        const auto ck=fields(carpenter.get_CellsData()),reference=fields(jameson.get_CellsData());
+        const auto& cells=carpenter.get_CellsData();
+        double increment=0,difference=0;
+        for(int c=0;c<4;++c) for(int j=3;j<3+cells.Nj_physical_cells;++j) for(int i=3;i<3+cells.Ni_physical_cells;++i)
+        {
+            const int k=Cell_index(i,j,cells.Ni_total_cells);
+            increment=std::max(increment,std::abs(double(reference[c](k))-double(start[c](k))));
+            difference=std::max(difference,std::abs(double(ck[c](k))-double(reference[c](k))));
+        }
+        require(increment>0,"The reference step did not change the state");
+        require(difference<=.05*increment,"Carpenter-Kennedy increment disagrees with Jameson: difference="+std::to_string(difference/increment)+" of the increment");
+    }
 }
 template<typename T> void export_solution()
 {

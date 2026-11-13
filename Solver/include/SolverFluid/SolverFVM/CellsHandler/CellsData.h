@@ -99,9 +99,9 @@ namespace Solver
     {
         initialization_data(const FlowConditions<T>& flow) : FlowConditions<T>(flow)
         {
-            c_inf = sqrt(flow.gamma);
-            velocity_u_inf = flow.Mach_inf * c_inf * cos(flow.alpha);
-            velocity_v_inf = flow.Mach_inf * c_inf * sin(flow.alpha);
+            c_inf = Kokkos::sqrt(flow.gamma);
+            velocity_u_inf = flow.Mach_inf * c_inf * Kokkos::cos(flow.alpha);
+            velocity_v_inf = flow.Mach_inf * c_inf * Kokkos::sin(flow.alpha);
             mu_inf = flow.Mach_inf * c_inf / flow.Re_inf;
             k_inf = (flow.gamma / (flow.gamma - 1)) * mu_inf / flow.Pr_inf;
             Momentum_u_inf = rho_inf * velocity_u_inf;

@@ -125,7 +125,7 @@ namespace IO
         const char* vtk_type = sizeof(T) == 4 ? "Float32" : "Float64";
         const char* byte_order = std::endian::native == std::endian::little ? "LittleEndian" : "BigEndian";
         const T dynamic_pressure = T(0.5) * init_data.rho_inf * (init_data.velocity_u_inf * init_data.velocity_u_inf + init_data.velocity_v_inf * init_data.velocity_v_inf);
-        const bool export_cp = dynamic_pressure > T{0} && std::isfinite(dynamic_pressure);
+        const bool export_cp = dynamic_pressure > T{0} && Kokkos::isfinite(dynamic_pressure);
         const std::array<const char*, 9> names = {"density", "momentum_u", "momentum_v", "energy", "pressure", "sound_speed", "mach", "velocity", "cp"};
         const int array_count = export_cp ? 9 : 8;
 
@@ -140,9 +140,11 @@ namespace IO
         metadata("alpha_rad", init_data.alpha);
         metadata("rho_inf", init_data.rho_inf);
         metadata("pressure_inf", init_data.P_inf);
-        if (physical_time >= 0 && std::isfinite(physical_time))
+        if (Kokkos::isfinite(init_data.Re_inf)) // Absent for an inviscid run.
+            metadata("reynolds_inf", init_data.Re_inf);
+        if (physical_time >= 0 && Kokkos::isfinite(physical_time))
             output << "<DataArray type=\"Float64\" Name=\"TimeValue\" NumberOfTuples=\"1\" format=\"ascii\">" << std::setprecision(17) << physical_time << "</DataArray>\n";
-        if (time_step >= 0 && std::isfinite(time_step))
+        if (time_step >= 0 && Kokkos::isfinite(time_step))
             output << "<DataArray type=\"Float64\" Name=\"time_step\" NumberOfTuples=\"1\" format=\"ascii\">" << std::setprecision(17) << time_step << "</DataArray>\n";
         output << "<DataArray type=\"Int32\" Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">" << iteration << "</DataArray>\n</FieldData>\n";
         output << "<Piece Extent=\"0 " << meshdata.Ni - 1 << " 0 " << meshdata.Nj - 1 << " 0 0\">\n<PointData/>\n<CellData Scalars=\"pressure\" Vectors=\"velocity\">\n";
@@ -156,7 +158,7 @@ namespace IO
         output << "</CellData>\n<Points><DataArray type=\"" << vtk_type << "\" NumberOfComponents=\"3\" format=\"appended\" offset=\"" << offset << "\"/></Points>\n</Piece>\n</StructuredGrid>\n<AppendedData encoding=\"raw\">_";
 
         // One reusable host buffer avoids an ASCII row per value and redundant connectivity.
-        std::vector<T> buffer(std::size_t(3 * std::max(nodes, cells)));
+        std::vector<T> buffer(std::size_t(3 * Kokkos::max(nodes, cells)));
         for (int field = 0; field < array_count; ++field)
         {
             const int components = field == 7 ? 3 : 1;
@@ -167,7 +169,7 @@ namespace IO
                     const std::size_t cell = std::size_t(i) + std::size_t(cellsdata.Ni_physical_cells) * j;
                     const T density = rho(k), u = momentum_u(k) / density, v = momentum_v(k) / density;
                     const T pressure = (init_data.gamma - T{1}) * (energy(k) - T(0.5) * density * (u * u + v * v));
-                    const T sound_speed = std::sqrt(init_data.gamma * pressure / density);
+                    const T sound_speed = Kokkos::sqrt(init_data.gamma * pressure / density);
                     switch (field)
                     {
                     case 0: buffer[cell] = density; break;
@@ -176,7 +178,7 @@ namespace IO
                     case 3: buffer[cell] = energy(k); break;
                     case 4: buffer[cell] = pressure; break;
                     case 5: buffer[cell] = sound_speed; break;
-                    case 6: buffer[cell] = std::sqrt(u * u + v * v) / sound_speed; break;
+                    case 6: buffer[cell] = Kokkos::sqrt(u * u + v * v) / sound_speed; break;
                     case 7: buffer[3 * cell] = u; buffer[3 * cell + 1] = v; buffer[3 * cell + 2] = T{0}; break;
                     case 8: buffer[cell] = (pressure - init_data.P_inf) / dynamic_pressure; break;
                     }
@@ -217,7 +219,7 @@ namespace IO
     template <typename CellData>
     void SolutionSeriesWriter<T, InitData>::write(const CellData& cellsdata, int iteration, double physical_time, double time_step)
     {
-        if (iteration <= last_iteration || !std::isfinite(physical_time) || !std::isfinite(time_step) || physical_time < 0 || time_step < 0 || (last_iteration >= 0 && physical_time <= last_time))
+        if (iteration <= last_iteration || !Kokkos::isfinite(physical_time) || !Kokkos::isfinite(time_step) || physical_time < 0 || time_step < 0 || (last_iteration >= 0 && physical_time <= last_time))
             throw std::invalid_argument("Temporal samples require increasing iterations and physical times, and finite nonnegative time steps");
         std::ostringstream filename;
         filename << "solution_" << std::setfill('0') << std::setw(8) << iteration << ".vts";

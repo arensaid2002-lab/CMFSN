@@ -100,9 +100,28 @@ la paroi. Le test `jst` compare les quatre composantes a une reference scalaire
 independante, en interieur et en frontiere. Il ne prescrit pas une annulation
 de la dissipation au mur.
 
-Les tests ne prescrivent pas une fermeture numerique particuliere du flux
-au mur. Le controle d'assemblage dans `viscous_flux` porte sur les faces
-interieures ou les deux etats, metriques, normales et flux sont prepares.
+Le controle d'assemblage dans `viscous_flux` couvre les faces interieures
+ainsi que les faces de paroi et de champ lointain : le flux visqueux complet
+doit les traverser (et non la moitie). Les conditions aux limites y posent les
+normales des fantomes (leurs metriques viennent de la geometrie), puis un champ
+affine remplace tous les etats, fantomes compris. La comparaison est faite en unites de `mu`, sinon elle
+serait sous la tolerance en `float`. Seules les frontieres en `i` sont exclues :
+la grille de test n'est pas periodique.
+
+`geometry` verifie en plus les metriques (`DJacobien`) de la face commune dans
+les rangees fantomes adjacentes a la paroi et au champ lointain, sur grille
+droite et courbe, contre une reference reconstruite depuis les centres. Elles
+sont calculees une seule fois par `eval_GeometricalData`. Le cas isotherme n'a
+pas ete modifie ; il sera revu plus tard.
+
+`rk_jameson` et `rk_ck` empoisonnent `D_history` avec des NaN entre deux pas :
+rien ne doit fuir d'un pas au suivant. `rk_ck` compare aussi l'increment d'un
+pas court a celui de Jameson (ecart inferieur a 5 % de l'increment).
+
+`constructors` couvre le constructeur unique `(FlowConditions, maillage)` : les
+valeurs par defaut, et le refus d'un solveur visqueux sans Reynolds fini.
+
 Les gradients et contraintes restent compares a des champs analytiques sur
-les quatre orientations. La validation du flux complet de paroi reste a faire.
+les quatre orientations. Le frottement parietal sur un cas physique (plaque
+plane, par exemple) n'est pas valide par ces tests.
 Un echec futur doit etre examine sans modifier automatiquement l'algorithme.

@@ -11,10 +11,10 @@ namespace Solver
     template <typename T, SolverTypes SType, TimeEvolutionScheme TEScheme, RungeKuttaScheme RKScheme>
     void SolverFVM<T, SType, TEScheme, RKScheme>::run(int iterations, T CFL, int report_interval, std::ostream* history, StateObserver observer, int snapshot_interval, double final_time)
     {
-        if (iterations < 0 || !(CFL > T{0}) || !std::isfinite(CFL) || report_interval < 1 || snapshot_interval < 1)
+        if (iterations < 0 || !(CFL > T{0}) || !Kokkos::isfinite(CFL) || report_interval < 1 || snapshot_interval < 1)
             throw std::invalid_argument("Solver run requires nonnegative iterations, positive finite CFL, and positive reporting intervals");
         if constexpr (TEScheme == TimeEvolutionScheme::UnSteady)
-            if (std::isnan(final_time) || final_time < state_info.physical_time)
+            if (Kokkos::isnan(final_time) || final_time < state_info.physical_time)
                 throw std::invalid_argument("Final physical time must not precede the current state");
         const auto start = std::chrono::steady_clock::now();
         auto previous_report = start;
@@ -42,7 +42,7 @@ namespace Solver
             previous_report = now;
             previous_iteration = state_info.iteration;
             last_reported_iteration = state_info.iteration;
-            if (diagnostics.invalid_cells != 0 || !std::isfinite(rms))
+            if (diagnostics.invalid_cells != 0 || !Kokkos::isfinite(rms))
                 throw std::runtime_error("Invalid physical state or residual; calculation stopped");
         };
         report(initial);
@@ -55,20 +55,20 @@ namespace Solver
             {
                 if (state_info.physical_time >= final_time)
                     break;
-                if (std::isfinite(final_time))
+                if (Kokkos::isfinite(final_time))
                 {
                     const double remaining = final_time - state_info.physical_time;
                     step_limit = T(remaining);
                     if (double(step_limit) > remaining)
-                        step_limit = std::nextafter(step_limit, T{0});
-                    if (!(step_limit > T{0}) || !std::isfinite(step_limit))
+                        step_limit = Kokkos::nextafter(step_limit, T{0});
+                    if (!(step_limit > T{0}) || !Kokkos::isfinite(step_limit))
                         throw std::runtime_error("Remaining physical duration is outside the scalar precision range");
                 }
             }
             if constexpr (TEScheme == TimeEvolutionScheme::Steady)
             {
                 const auto diagnostics = eval_diagnostics(cells_handler.get_CellsData());
-                if (diagnostics.invalid_cells != 0 || !std::isfinite(diagnostics.residual_rms))
+                if (diagnostics.invalid_cells != 0 || !Kokkos::isfinite(diagnostics.residual_rms))
                     throw std::runtime_error("Invalid physical state or residual; calculation stopped");
                 if (diagnostics.residual_rms <= 1e-6)
                     break;
@@ -81,7 +81,7 @@ namespace Solver
             ++state_info.iteration;
             if constexpr (TEScheme == TimeEvolutionScheme::UnSteady)
             {
-                if (!(time_step > T{0}) || !std::isfinite(time_step))
+                if (!(time_step > T{0}) || !Kokkos::isfinite(time_step))
                     throw std::runtime_error("Invalid physical time step");
                 state_info.time_step = time_step;
                 state_info.physical_time += double(time_step);
@@ -101,7 +101,7 @@ namespace Solver
     {
         if constexpr (TEScheme != TimeEvolutionScheme::UnSteady)
             throw std::logic_error("Physical-time stopping requires the UnSteady solver mode");
-        if (!std::isfinite(final_time) || final_time < state_info.physical_time || max_iterations < 1)
+        if (!Kokkos::isfinite(final_time) || final_time < state_info.physical_time || max_iterations < 1)
             throw std::invalid_argument("A finite final time and a positive step limit are required");
         run(max_iterations, CFL, report_interval, history, observer, snapshot_interval, final_time);
         if (state_info.physical_time < final_time)
@@ -147,6 +147,6 @@ namespace Solver
 				sum += residual * residual;
 			}
 		}, residual_squared);
-		return std::sqrt(residual_squared / (4.0 * cellsdata.N_physical_cells));
+		return Kokkos::sqrt(residual_squared / (4.0 * cellsdata.N_physical_cells));
     }
 }

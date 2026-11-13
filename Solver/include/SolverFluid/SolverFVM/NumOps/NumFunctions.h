@@ -25,14 +25,14 @@ namespace Solver::NumOps
 	KOKKOS_INLINE_FUNCTION
 	T eval_sound_speed(T gamma, T pressure, T rho)
 	{
-		T sound_speed = sqrt(gamma * pressure / rho);
+		T sound_speed = Kokkos::sqrt(gamma * pressure / rho);
 		return sound_speed;
 	}
 	template <typename T>
 	KOKKOS_INLINE_FUNCTION
 	T eval_velocity_magnitude(T u, T v)
 	{
-		T velocity = sqrt(u * u + v * v);
+		T velocity = Kokkos::sqrt(u * u + v * v);
 		return velocity;
 	}
 	template <typename T>

@@ -332,13 +332,6 @@ namespace Solver::CellOps
                 const T EdgeLength = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_wall, 0);
                 Update_DataField<T, DataFields::NormalUnitVector>(ghost_normal, cellsdata, k_ghost, 2);
                 Update_DataField<T, DataFields::EdgeLength>(EdgeLength, cellsdata, k_ghost, 2);
-                // Ghost adjacent to the wall: metrics of the common face seen from the ghost side
-                // (both local axes are reversed, so the terms are the opposite of the wall cell's).
-                if (k_source == k_wall)
-                {
-                    for (int component = 0; component < 4; ++component)
-                        cellsdata.DJacobien(k_ghost, 2, component) = -cellsdata.DJacobien(k_wall, 0, component);
-                }
                 Update_DataField<T, DataFields::Conservative_Old>(Ghost_State, cellsdata, init_data, k_ghost, 2);
                 Update_DataField<T, DataFields::Fluxes>(cellsdata, k_ghost, 2);
             });
@@ -408,10 +401,6 @@ namespace Solver::CellOps
                 }
                 const auto ghost_normal = T{-1} * normal;
                 const T EdgeLength = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_cell, 2);
-                // Ghost adjacent to the farfield: metrics of the common face seen from the ghost side
-                // (both local axes are reversed, so the terms are the opposite of the boundary cell's).
-                for (int component = 0; component < 4; ++component)
-                    cellsdata.DJacobien(k_cell + row_stride, 0, component) = -cellsdata.DJacobien(k_cell, 2, component);
                 for (int layer = 1; layer <= cellsdata.N_ghost_layers; layer++)
                 {
                     const int k_ghost = k_cell + layer * row_stride;
@@ -636,6 +625,22 @@ namespace Solver::CellOps
                         cellsdata.DJacobien(k_cell, direction, component) = DJacobien[component];
                 }
             });
+            // Ghost rows touching the wall and the farfield: metrics of the face they share with the domain,
+            // seen from the ghost cell. Without them the ghost-side viscous flux vanishes and the boundary
+            // viscous flux is halved by the face average.
+            Kokkos::parallel_for("eval_ghost_DJacobien", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.Ni_physical_cells), KOKKOS_LAMBDA(int i_mesh)
+            {
+                const int i_cell = i_mesh + cellsdata.N_ghost_layers;
+                const int k_wall_ghost = Cell_index(i_cell, cellsdata.N_ghost_layers - 1, cellsdata.Ni_total_cells);
+                const int k_farfield_ghost = Cell_index(i_cell, cellsdata.N_ghost_layers + cellsdata.Nj_physical_cells, cellsdata.Ni_total_cells);
+                const auto DJacobien_wall = eval_CellDJacobien(cellsdata, k_wall_ghost, 2);
+                const auto DJacobien_farfield = eval_CellDJacobien(cellsdata, k_farfield_ghost, 0);
+                for (int component = 0; component < 4; ++component)
+                {
+                    cellsdata.DJacobien(k_wall_ghost, 2, component) = DJacobien_wall[component];
+                    cellsdata.DJacobien(k_farfield_ghost, 0, component) = DJacobien_farfield[component];
+                }
+            });
         }
 
 
@@ -761,13 +766,13 @@ namespace Solver::CellOps
             {
                 int k_dissipation_index = Captor_index + 1;
                 T denominator = Pressure(k_Dissipation[k_dissipation_index + 1]) + 2 * Pressure(k_Dissipation[k_dissipation_index]) + Pressure(k_Dissipation[k_dissipation_index - 1]);
-                T numerator = abs(Pressure(k_Dissipation[k_dissipation_index + 1]) - 2 * Pressure(k_Dissipation[k_dissipation_index]) + Pressure(k_Dissipation[k_dissipation_index - 1]));
+                T numerator = Kokkos::abs(Pressure(k_Dissipation[k_dissipation_index + 1]) - 2 * Pressure(k_Dissipation[k_dissipation_index]) + Pressure(k_Dissipation[k_dissipation_index - 1]));
                 Pressure_captors[Captor_index] = numerator / denominator;
             }
             
             T epsilon_2 = k_2 * max(Pressure_captors);
 
-            T epsilon_4 = max(Kokkos::Array<T,2> {0 , k_4 - epsilon_2});
+            T epsilon_4 = Kokkos::max(T{0}, k_4 - epsilon_2);
 
             Kokkos::Array < Kokkos::Array<T, 4>, 4> W;
             for (int i = 0; i < 4; i++)
@@ -831,7 +836,7 @@ namespace Solver::CellOps
                 throw std::invalid_argument("Runge-Kutta boundary stencils require enough physical cells for the ghost layers");
             if (!(CFL > T{0}))
                 throw std::invalid_argument("Runge-Kutta requires a positive CFL");
-            if (physical_time_step && (!(max_time_step > T{0}) || !std::isfinite(max_time_step)))
+            if (physical_time_step && (!(max_time_step > T{0}) || !Kokkos::isfinite(max_time_step)))
                 throw std::invalid_argument("Runge-Kutta requires a positive finite physical step limit");
         }
 
