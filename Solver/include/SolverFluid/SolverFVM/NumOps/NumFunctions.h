@@ -88,6 +88,24 @@ namespace Solver::NumOps
 	}
 	template <typename T>
 	KOKKOS_INLINE_FUNCTION
+	T eval_viscosity(T Theta, T T_inf, T mu_inf)
+	{
+		T S = T{110.4}/T_inf;
+		T_
+		T mu = mu_inf*(C1 * Kokkos::pow(Theta, T{3}/T{2}))/(temperature + C2);
+		return mu;
+	}
+	template <typename T>
+	KOKKOS_INLINE_FUNCTION
+	T eval_thermalconductivity(T mu, T gamma, T Prandtl)
+	{
+		T k = (gamma/(gamma - 1))*(mu/Prandtl);
+	
+		return k;
+	}
+
+	template <typename T>
+	KOKKOS_INLINE_FUNCTION
 	Kokkos::Array<T, 3> Tau(T mu, const Kokkos::Array<T, 4>& DV)
 	{
 		T Tau_xx = mu * ((T{ 4 } / T{3})*DV[0] - (T{ 2 } / T{ 3 })*DV[3]);

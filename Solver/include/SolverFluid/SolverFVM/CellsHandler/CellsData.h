@@ -43,12 +43,15 @@ namespace Solver
             SoundSpeed = View1D<T>("Soundspeed", N_total_cells);
             Lambdas = View2D<T>("Lambdas", N_total_cells, meshdata.N_faces);
 
+            
             velocity_u      = View1D<T>("velocity_u", N_total_cells);
             velocity_v      = View1D<T>("velocity_v", N_total_cells);
             rho_old         = View1D<T>("rho_old", N_total_cells);
             Momentum_u_old  = View1D<T>("Momentum_u_old", N_total_cells);
             Momentum_v_old  = View1D<T>("Momentum_v_old", N_total_cells);
             E_old           = View1D<T>("E_old", N_total_cells);
+                        
+            Node_data       = View2D<T>("Node_data", N_total_cells, 5); // {u,v, T, S_x, S_y}
 
             rho_new         = View1D<T>("rho_new", N_total_cells);
             Momentum_u_new  = View1D<T>("Momentum_u_new", N_total_cells);
@@ -75,7 +78,7 @@ namespace Solver
         View1D<T> rho_old, Momentum_u_old, Momentum_v_old, E_old;
         View1D<T> rho_new, Momentum_u_new, Momentum_v_new, E_new;
         View1D<T> rho_0, Momentum_u_0, Momentum_v_0, Energy_0;
-        View2D<T> D_history; // Retained RK contribution per cell, not per face.
+        View2D<T> D_history, Node_data; // Retained RK contribution per cell, not per face.
         View2D<T> Cell_Centers, Flux_mass, Flux_Momentum_u, Flux_Momentum_v, Flux_E, Lambdas;
         View3D<T> Normals, DJacobien; 
         int Ni_physical_cells, Nj_physical_cells;
@@ -87,7 +90,7 @@ namespace Solver
     template <typename T = float>
     struct FlowConditions
     {
-        T Mach_inf = T{0}, gamma = T(1.4), alpha = T{0}; // alpha is in radians.
+        T Mach_inf = T{0}, gamma = T(1.4), T_inf = T{288.15}, alpha = T{0}; // alpha is in radians.
         T Re_inf = std::numeric_limits<T>::infinity(), Pr_inf = T{1}; // Only used by the viscous solver.
         BoundaryCondition wall_condition = BoundaryCondition::AdiabaticWall;
         T wall_temperature = T{1}; // Same nondimensional temperature convention as p/rho.

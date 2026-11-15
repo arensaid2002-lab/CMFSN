@@ -643,7 +643,6 @@ namespace Solver::CellOps
             });
         }
 
-
         template <typename T, DataFields Field>
         KOKKOS_INLINE_FUNCTION
         auto eval_gradient(const CellsData<T>& cellsdata, int k_cell, int direction)
@@ -690,21 +689,30 @@ namespace Solver::CellOps
 
             int row_stride = cellsdata.Ni_total_cells;
 			int k_side = Cell_index_sides(k_cell, row_stride, direction);
-			Kokkos::Array<T, 4> ViscuousDissipation;
+			
+            T Temperature = extract_DataField<T, DataFields::Temperature>(cellsdata, k_cell);
+            T mu = eval_viscosity<T>(Temperature);
+            
+            Kokkos::Array<T, 4> ViscuousDissipation;
+
 			auto velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
 			auto velocity_side = extract_DataField<T, DataFields::Velocity>(cellsdata, k_side);
             auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, direction);
-			
-            
             auto dV = eval_gradient<T, DataFields::Velocity>(cellsdata, k_cell, direction);
-
             
-            auto tau = Tau(data.mu_inf, dV);
-			auto t_x = normal[0] * tau[0] + normal[1] * tau[2];
-			auto t_y = normal[0] * tau[2] + normal[1] * tau[1];
+
+
+            auto tau = Tau(mu, dV);
+			auto t_x = normal[0] * tau[0] + normal[1] * tau[2];  //tx normal viscuous component
+			auto t_y = normal[0] * tau[2] + normal[1] * tau[1];  //ty normal viscuous component
 			auto V_mean = mean(velocity, velocity_side);
-			auto dtheta = eval_gradient<T, DataFields::Temperature>(cellsdata, k_cell, direction);
-            auto q = -data.k_inf * dot(dtheta, normal);
+
+			auto dtheta = eval_gradient<T, DataFields::Temperature>(cellsdata, k_cell, direction); //Temperature gradient
+
+            T k = eval_thermalconductivity<T>(mu, data.gamma, data.Pr_inf);
+
+
+            auto q = - k * dot(dtheta, normal);
 
             ViscuousDissipation = {0, t_x, t_y, V_mean[0]*t_x + V_mean[1]*t_y - q};
 
@@ -740,7 +748,7 @@ namespace Solver::CellOps
         {
 			int row_stride = cellsdata.Ni_total_cells;
             
-            const T k_2 = (T)0.6;
+            const T k_2 = (T)0.5;
             const T k_4 = (T)1/(T)64;
             
             T Lambdas_2 = mean(cellsdata.Lambdas(k_cell, direction), cellsdata.Lambdas(Cell_index_sides(k_cell, row_stride, direction), (direction + 2)%4));
