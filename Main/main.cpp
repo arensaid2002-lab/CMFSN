@@ -44,14 +44,16 @@ int main()
 
     // 1.2 Wing (see 3Dwing.hpp). Every field is named so the order cannot be mixed up.
     const nacawing::WingParams wing{
-        .b             = 8.0,    // [m]   full span, tip to tip (we build one half, y = 0 .. b/2)
-        .c_r           = 1.0,    // [m]   root chord
-        .c_t           = 0.5,    // [m]   tip chord
-        .sweepLE       = 20.0,   // [deg] leading-edge sweep
-        .twistTip      = -4.0,   // [deg] tip twist (negative = washout, nose down)
-        .dihedral      = 0.0,    // [deg] dihedral
-        .twistPivot    = 0.25,   // [-]   twist turns around x = 0.25 c (quarter chord)
-        .twistExponent = 1.0,    // [-]   eps(eta) = eps_t * eta^p, 1 = linear
+        .b              = 8.0,    // [m]   full span, tip to tip (we build one half, y = 0 .. b/2)
+        .c_r            = 1.0,    // [m]   root chord
+        .c_t            = 0.5,    // [m]   tip chord
+        .sweep          = 0.0,   // [deg] xRef line sweep
+        .twistTip       = 0.0,   // [deg] tip twist (negative = washout, nose down)
+        .dihedral       = 0.0,    // [deg] dihedral
+        .twistPivot     = 0.25,   // [-]   twist turns around x = 0.25 c (quarter chord)
+        .xRef           = 0.25,   // [-]   point that stays consistante and everything shrinks around x = 0.25 c (quarter chord)
+        .twistExponent  = 1.0,    // [-]   eps(eta) = eps_t * eta^p, 1 = linear
+        .type = nacawing::ChordLaw ::Ellipse,
     };
 
     // 1.3 Mesh sizes
@@ -59,17 +61,20 @@ int main()
     const int vlmNi = 8;
     const int vlmNj = 12;
     const nacawing::SpanSpacing vlmSpacing = nacawing::SpanSpacing::SineTip;   // panels shrink toward the tip
+    //  The spacing is a field of WingParams: meshWing = the same wing, with the VLM/beam spacing.
+    nacawing::WingParams meshWing = wing;
+    meshWing.spacing = vlmSpacing;
 
     //  Euler: nc cells in each direction (ni = nj = nc + 1 nodes). nc must be even. PRENDRE PUISSANCE DE 2
     //  generateOGrid only supports symmetric profiles for now, so the Euler mesh uses NACA 0012.
     const nacawing::NacaParams eulerAirfoil = nacawing::fromDigits(0, 0, 12);
-    const int eulerNc = 4096;
+    const int eulerNc = 64;
 
-    //  Structure: beam nodes on the SAME span stations as the VLM (vlmNj + 1 nodes, vlmNj elements,
-    //  vlmSpacing), so every node sits on a VLM chord line (load transfer, Jasa et al. 2018, sec. 3.2).
+    //  Structure: beam nodes on the unform span stations
     //  beamXc = chordwise position of the node, fraction of the local chord on the camber line
     //  (0 = LE, 1 = TE). 0.38 is a proposal (OAS wingbox formula); the structure team decides.
-    const double beamXc = 0.38;
+    const nacawing::SpanSpacing beamSpacing = nacawing::SpanSpacing::Uniform;
+    const double beamXc = 0.25;
 
     // 1.4 Output folders (created if they are missing; nothing happens if they exist).
     const fs::path results    = CMFSN_RESULTS_DIR;
@@ -118,7 +123,7 @@ int main()
     //     vlmGrid places that line at nj + 1 span stations with chord, sweep, twist and dihedral.
     {
         std::vector<nacawing::Point2D> camber = mesh::nacaCambrure(airfoil.m, airfoil.p, vlmNi + 1);
-        mesh::VlmGrid grid = mesh::vlmGrid(wing, camber, vlmNj, vlmSpacing);
+        mesh::VlmGrid grid = mesh::vlmGrid(meshWing, camber, vlmNj);
         const fs::path file = vlmDir / ("vlm_" + airfoilName + "_ni" + std::to_string(vlmNi)
                                         + "_nj" + std::to_string(vlmNj) + ".dat");
         mesh::writeTecplot(grid, file.string());
@@ -127,11 +132,12 @@ int main()
     }
 
     // 3.3 Structure: beam nodes. nacaCambrurePoint gives ONE camber point (beamXc, y_c), and BeamMesh
-    //     extrudes it with wingSurface on the VLM stations (same vlmNj and vlmSpacing), so it gets
+    //     extrudes it with wingSurface on the stations (Uniform), so it gets
     //     the local chord, sweep, twist and dihedral. Ids start at 1; element e joins nodes e and e + 1.
     {
+        meshWing.spacing = beamSpacing;
         std::vector<nacawing::Point2D> beamPoint = mesh::nacaCambrurePoint(airfoil.m, airfoil.p, beamXc);
-        std::vector<mesh::NastranData> nodes = mesh::BeamMesh(wing, beamPoint, vlmNj, vlmSpacing);
+        std::vector<mesh::NastranData> nodes = mesh::BeamMesh(meshWing, beamPoint, vlmNj);
         const fs::path file = structDir / ("beam_" + airfoilName + "_nj" + std::to_string(vlmNj) + ".txt");
         mesh::writeNastran(nodes, file.string());
         summary.push_back(file.generic_string() + "  (" + std::to_string(nodes.size()) + " nodes, "
