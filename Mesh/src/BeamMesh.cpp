@@ -16,8 +16,8 @@ namespace mesh {
         }
 
 
-    std::vector<NastranData> BeamMesh(const nacawing::WingParams& w, const std::vector<nacawing::Point2D>& pointPoutre, int nj, nacawing::SpanSpacing spacing){
-        std::vector<std::vector<nacawing::Point3D>>    surface = nacawing::wingSurface(w, pointPoutre, nj + 1, spacing);
+    std::vector<NastranData> BeamMesh(const nacawing::WingParams& w, const std::vector<nacawing::Point2D>& pointPoutre, int nj){
+        std::vector<std::vector<nacawing::Point3D>>    surface = nacawing::wingSurface(w, pointPoutre, nj + 1);   // spacing = w.spacing
         std::vector<NastranData> grid{};
 
         for (int j = 0; j <= nj; j++){

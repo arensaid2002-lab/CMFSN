@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream> 
 #include <algorithm> //std::reverse.
+#include <iomanip>   //file << std::setprecision(10);
 
 namespace mesh {
 
@@ -31,8 +32,8 @@ namespace mesh {
         return cambrure; 
     }
 
-    VlmGrid vlmGrid(const nacawing::WingParams& w, const std::vector<nacawing::Point2D>& cambrure, int nj, nacawing::SpanSpacing spacing){
-        std::vector<std::vector<nacawing::Point3D>>  surface = nacawing::wingSurface(w, cambrure, nj + 1, spacing);
+    VlmGrid vlmGrid(const nacawing::WingParams& w, const std::vector<nacawing::Point2D>& cambrure, int nj){
+        std::vector<std::vector<nacawing::Point3D>>  surface = nacawing::wingSurface(w, cambrure, nj + 1);   // spacing = w.spacing
         VlmGrid grid{};
         grid.ni = static_cast<int>(cambrure.size()) - 1;   // 3 points → 2 panels
         grid.nj = nj;                                      // 3 panels (4 stations)
@@ -46,6 +47,7 @@ namespace mesh {
 
      void writeTecplot(const VlmGrid& grid, const std::string& filename){ //location to save the plot .dat,
         std::ofstream file(filename);
+        file << std::setprecision(10);
         file << "VARIABLES = \"X\" \"Y\" \"Z\"\n"; // line 1
         file << "ZONE I="<< grid.ni + 1 << ", J=" << grid.nj + 1 << ", DATAPACKING=POINT\n"; // line 2
         

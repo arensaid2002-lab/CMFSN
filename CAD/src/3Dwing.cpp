@@ -29,13 +29,6 @@ namespace nacawing {
             return w.c_t / w.c_r;
         }   
 
-    double chordAt(const WingParams& w, double y)
-        {
-            double lambda = taperRatio(w);
-            double eta = y / (w.b / 2.0);
-            return w.c_r * (1.0-(1.0-lambda)*eta);
-        }
-
     std::vector<Point2D> sectionLoop(double m, double p, double t, int n)
         {
             // Point 0 is the TE upper passes to LE then lower to its TE
@@ -54,9 +47,16 @@ namespace nacawing {
                 return angle * std::numbers::pi / 180.0;};
 
             double eta = y / (w.b / 2.0);              // y = span station
-            double c = chordAt(w, y);
+
+            // local cord calculation if trapezoid
+            double lambda = taperRatio(w);
+            double c = w.c_r * (1.0-(1.0-lambda)*eta);
+            // local cord calculation if ellipse   
+            if (w.type == ChordLaw ::Ellipse){
+                c = w.c_r * std::sqrt(std::max(0.0, 1 - eta*eta));       // 
+                }
             double epsilon = AngleToRad(w.twistTip * std::pow(eta,w.twistExponent));
-            double x_LE = y * std::tan(AngleToRad(w.sweepLE));
+            double x_LE = y * std::tan(AngleToRad(w.sweep)) + w.xRef * (w.c_r - c);
             double x_p = c * w.twistPivot;
 
             std::vector<Point3D> section;
@@ -76,16 +76,16 @@ namespace nacawing {
                 return section;
         }
 
-     std::vector<std::vector<Point3D>>  wingSurface(const WingParams& w, const std::vector<Point2D>& loop, int Ns,
-                                                    SpanSpacing spacing)
+     std::vector<std::vector<Point3D>>  wingSurface(const WingParams& w, const std::vector<Point2D>& loop, int Ns)
          {
             // Surface[i][j]: one row per loop point i, one column per station j (see 3Dwing.hpp).
             std::vector<std::vector<Point3D>> Surface(loop.size(), std::vector<Point3D>(Ns));
 
             for (int j = 0; j < Ns ; j++) {
                 double eta = static_cast<double>(j) / (Ns - 1);         // 0 at the root, 1 at the tip
-                if (spacing == SpanSpacing::SineTip)
+                if (w.spacing == SpanSpacing::SineTip){
                     eta = std::sin(0.5 * std::numbers::pi * eta);       // sin(pi j / (2(Ns-1)))
+                    }
                 double y = 0.5 * w.b * eta;                             // span station
 
                 std::vector<Point3D> section = sectionAt(w, loop, y);   // the whole loop at this y

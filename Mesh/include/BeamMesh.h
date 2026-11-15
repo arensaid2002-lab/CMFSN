@@ -16,8 +16,8 @@ namespace mesh {
             double z;
         };
 
-        std::vector<NastranData> BeamMesh(const nacawing::WingParams& w, const std::vector<nacawing::Point2D>& pointPoutre, int nj, 
-                                                nacawing::SpanSpacing spacing = nacawing::SpanSpacing::SineTip);  //ni is then just cambrure.size() - 1
+        // The span spacing (Uniform / SineTip) comes from w.spacing.
+        std::vector<NastranData> BeamMesh(const nacawing::WingParams& w, const std::vector<nacawing::Point2D>& pointPoutre, int nj);  //ni is then just cambrure.size() - 1
 
         void writeNastran(const std::vector<NastranData>& grid, const std::string& filename); //location to save the plot .bdf,
 
