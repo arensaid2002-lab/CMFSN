@@ -72,7 +72,7 @@ namespace Solver::CellOps
             }
             else if constexpr (Fields == DataFields::Temperature)
             {
-                return cellsdata.Pressure(k) / cellsdata.rho_old(k);
+                return cellsdata.Temperature(k);
             }
             else if constexpr (Fields == DataFields::NormalUnitVector)
             {
@@ -151,10 +151,14 @@ namespace Solver::CellOps
             const auto velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k);
             const T pressure = eval_pressure<T>(cellsdata.rho_old(k), cellsdata.E_old(k), velocity[0], velocity[1], init_data.gamma);
             const T sound_speed = eval_sound_speed<T>(init_data.gamma, pressure, cellsdata.rho_old(k));
+            const T temperature = pressure / cellsdata.rho_old(k);
             cellsdata.velocity_u(k) = velocity[0];
             cellsdata.velocity_v(k) = velocity[1];
             cellsdata.Pressure(k) = pressure;
             cellsdata.SoundSpeed(k) = sound_speed;
+            cellsdata.Temperature(k) = temperature;
+            // Inviscid run (mu_inf = 0): exactly zero, without evaluating Sutherland.
+            cellsdata.Viscosity(k) = init_data.mu_inf > T{0} ? eval_viscosity<T>(temperature, init_data.T_inf, init_data.mu_inf) : T{0};
             const auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k, direction);
             const T edge_length = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k, direction);
             cellsdata.Lambdas(k, direction) = eval_Lambda<T>(velocity, normal, sound_speed, edge_length);
@@ -272,6 +276,8 @@ namespace Solver::CellOps
                 cellsdata.E_old(k) = init_data.E_inf;
                 cellsdata.Pressure(k) = init_data.P_inf;
                 cellsdata.SoundSpeed(k) = init_data.c_inf;
+                cellsdata.Temperature(k) = init_data.theta_inf;
+                cellsdata.Viscosity(k) = init_data.mu_inf;
                 const int i = k % (cellsdata.Ni_total_cells);
                 const int j = k / (cellsdata.Ni_total_cells);
                 if (i >= cellsdata.N_ghost_layers && i < cellsdata.N_ghost_layers + cellsdata.Ni_physical_cells && j >= cellsdata.N_ghost_layers && j < cellsdata.N_ghost_layers + cellsdata.Nj_physical_cells)
@@ -690,8 +696,7 @@ namespace Solver::CellOps
             int row_stride = cellsdata.Ni_total_cells;
 			int k_side = Cell_index_sides(k_cell, row_stride, direction);
 			
-            T Temperature = extract_DataField<T, DataFields::Temperature>(cellsdata, k_cell);
-            T mu = eval_viscosity<T>(Temperature);
+            const T mu = cellsdata.Viscosity(k_cell);
             
             Kokkos::Array<T, 4> ViscuousDissipation;
 
@@ -812,13 +817,16 @@ namespace Solver::CellOps
         T eval_TimeStep(const CellsData<T>& cellsdata, const initialization_data<T>& init_data, int k_cell, T CFL)
         {
             T Lambda = T{0};
+            T viscous_factor = T{0};
+            if constexpr (SType == SolverTypes::RANS2D)
+                viscous_factor = (cellsdata.Viscosity(k_cell) / cellsdata.rho_old(k_cell)) * (T{4}/T{3} + init_data.gamma/init_data.Pr_inf) / cellsdata.Cell_Areas(k_cell);
             for (int direction = 0; direction < cellsdata.N_faces; ++direction)
             {
                 Lambda += T{0.5} * cellsdata.Lambdas(k_cell, direction);
                 if constexpr (SType == SolverTypes::RANS2D)
                 {
                     const T edge_length = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_cell, direction);
-                    Lambda += (init_data.mu_inf / cellsdata.rho_old(k_cell)) * (T{4}/T{3} + init_data.gamma/init_data.Pr_inf) * edge_length*edge_length / cellsdata.Cell_Areas(k_cell);
+                    Lambda += viscous_factor * edge_length * edge_length;
                 }
             }
             return CFL * cellsdata.Cell_Areas(k_cell) / Lambda;
@@ -835,15 +843,10 @@ namespace Solver::CellOps
             return Cell_index(i_cell, j_cell, cellsdata.Ni_total_cells);
         }
 
+        // Faces, ghost layers and cell counts are checked by the CellsHandler constructor, and the CFL by SolverFVM::run.
         template <typename T>
-        void RungeKutta_Validate(const CellsData<T>& cellsdata, T CFL, T max_time_step, bool physical_time_step)
+        void RungeKutta_Validate(T max_time_step, bool physical_time_step)
         {
-            if (cellsdata.N_faces != 4 || cellsdata.N_ghost_layers < 3)
-                throw std::invalid_argument("Runge-Kutta requires four faces and at least three ghost layers");
-            if (cellsdata.Ni_physical_cells < cellsdata.N_ghost_layers || cellsdata.Nj_physical_cells < cellsdata.N_ghost_layers)
-                throw std::invalid_argument("Runge-Kutta boundary stencils require enough physical cells for the ghost layers");
-            if (!(CFL > T{0}))
-                throw std::invalid_argument("Runge-Kutta requires a positive CFL");
             if (physical_time_step && (!(max_time_step > T{0}) || !Kokkos::isfinite(max_time_step)))
                 throw std::invalid_argument("Runge-Kutta requires a positive finite physical step limit");
         }
@@ -893,7 +896,7 @@ namespace Solver::CellOps
         template <typename ExecSpace, typename T, SolverTypes SType = SolverTypes::Euler2D, TimeEvolutionScheme TEScheme = TimeEvolutionScheme::Steady>
         T RungeKutta5(CellsData<T>& cellsdata, const initialization_data<T>& init_data, T CFL = T{1}, T max_time_step = std::numeric_limits<T>::max())
         {
-            RungeKutta_Validate(cellsdata, CFL, max_time_step, TEScheme == TimeEvolutionScheme::UnSteady);
+            RungeKutta_Validate(max_time_step, TEScheme == TimeEvolutionScheme::UnSteady);
 
             Kokkos::deep_copy(cellsdata.rho_0, cellsdata.rho_old);
             Kokkos::deep_copy(cellsdata.Momentum_u_0, cellsdata.Momentum_u_old);
@@ -957,7 +960,7 @@ namespace Solver::CellOps
         T RungeKuttaCarpenterKennedy5(CellsData<T>& cellsdata, const initialization_data<T>& init_data, T CFL = T{1}, T max_time_step = std::numeric_limits<T>::max())
         {
             static_assert(TEScheme == TimeEvolutionScheme::UnSteady, "Carpenter-Kennedy is only available in UnSteady mode");
-            RungeKutta_Validate(cellsdata, CFL, max_time_step, true);
+            RungeKutta_Validate(max_time_step, true);
 
             const Kokkos::Array<T, 5> A = { T{ 0 }, -T(567301805773LL) / T(1357537059087LL), -T(2404267990393LL) / T(2016746695238LL), -T(3550918686646LL) / T(2091501179385LL), -T(1275806237668LL) / T(842570457699LL) };
             const Kokkos::Array<T, 5> B = { T(1432997174477LL) / T(9575080441755LL), T(5161836677717LL) / T(13612068292357LL), T(1720146321549LL) / T(2090206949498LL), T(3134564353537LL) / T(4481467310338LL), T(2277821191437LL) / T(14882151754819LL) };

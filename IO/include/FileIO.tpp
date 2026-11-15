@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <MeshHandler.h>
+#include <NumOps/NumFunctions.h>
 
 using namespace std;
 using namespace Mesh;
@@ -126,8 +127,15 @@ namespace IO
         const char* byte_order = std::endian::native == std::endian::little ? "LittleEndian" : "BigEndian";
         const T dynamic_pressure = T(0.5) * init_data.rho_inf * (init_data.velocity_u_inf * init_data.velocity_u_inf + init_data.velocity_v_inf * init_data.velocity_v_inf);
         const bool export_cp = dynamic_pressure > T{0} && Kokkos::isfinite(dynamic_pressure);
-        const std::array<const char*, 9> names = {"density", "momentum_u", "momentum_v", "energy", "pressure", "sound_speed", "mach", "velocity", "cp"};
-        const int array_count = export_cp ? 9 : 8;
+        // The viscosity exists only for a viscous run (finite Reynolds); Euler2D stores an infinite one.
+        const bool export_viscosity = Kokkos::isfinite(init_data.Re_inf);
+        const std::array<const char*, 11> names = {"density", "momentum_u", "momentum_v", "energy", "pressure", "sound_speed", "mach", "velocity", "temperature", "viscosity", "cp"};
+        enum Field { Density, MomentumU, MomentumV, Energy, Pressure, SoundSpeed, Mach, Velocity, Temperature, Viscosity, Cp };
+        std::vector<int> fields = {Density, MomentumU, MomentumV, Energy, Pressure, SoundSpeed, Mach, Velocity, Temperature};
+        if (export_viscosity)
+            fields.push_back(Viscosity);
+        if (export_cp)
+            fields.push_back(Cp);
 
         output << "<?xml version=\"1.0\"?>\n<VTKFile type=\"StructuredGrid\" version=\"1.0\" byte_order=\"" << byte_order << "\" header_type=\"UInt64\">\n";
         output << "<StructuredGrid WholeExtent=\"0 " << meshdata.Ni - 1 << " 0 " << meshdata.Nj - 1 << " 0 0\">\n<FieldData>\n";
@@ -140,8 +148,11 @@ namespace IO
         metadata("alpha_rad", init_data.alpha);
         metadata("rho_inf", init_data.rho_inf);
         metadata("pressure_inf", init_data.P_inf);
-        if (Kokkos::isfinite(init_data.Re_inf)) // Absent for an inviscid run.
+        if (export_viscosity) // Absent for an inviscid run.
+        {
             metadata("reynolds_inf", init_data.Re_inf);
+            metadata("t_inf_kelvin", init_data.T_inf);
+        }
         if (physical_time >= 0 && Kokkos::isfinite(physical_time))
             output << "<DataArray type=\"Float64\" Name=\"TimeValue\" NumberOfTuples=\"1\" format=\"ascii\">" << std::setprecision(17) << physical_time << "</DataArray>\n";
         if (time_step >= 0 && Kokkos::isfinite(time_step))
@@ -149,9 +160,9 @@ namespace IO
         output << "<DataArray type=\"Int32\" Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">" << iteration << "</DataArray>\n</FieldData>\n";
         output << "<Piece Extent=\"0 " << meshdata.Ni - 1 << " 0 " << meshdata.Nj - 1 << " 0 0\">\n<PointData/>\n<CellData Scalars=\"pressure\" Vectors=\"velocity\">\n";
         std::uint64_t offset = 0;
-        for (int field = 0; field < array_count; ++field)
+        for (const int field : fields)
         {
-            const int components = field == 7 ? 3 : 1;
+            const int components = field == Velocity ? 3 : 1;
             output << "<DataArray type=\"" << vtk_type << "\" Name=\"" << names[field] << "\" NumberOfComponents=\"" << components << "\" format=\"appended\" offset=\"" << offset << "\"/>\n";
             offset += sizeof(std::uint64_t) + cells * components * sizeof(T);
         }
@@ -159,9 +170,11 @@ namespace IO
 
         // One reusable host buffer avoids an ASCII row per value and redundant connectivity.
         std::vector<T> buffer(std::size_t(3 * Kokkos::max(nodes, cells)));
-        for (int field = 0; field < array_count; ++field)
+        // Every derived field is rebuilt from the conservative state: after the last Runge-Kutta stage the stored
+        // pressure, temperature and viscosity still describe the previous stage.
+        for (const int field : fields)
         {
-            const int components = field == 7 ? 3 : 1;
+            const int components = field == Velocity ? 3 : 1;
             for (int j = 0; j < cellsdata.Nj_physical_cells; ++j)
                 for (int i = 0; i < cellsdata.Ni_physical_cells; ++i)
                 {
@@ -170,17 +183,20 @@ namespace IO
                     const T density = rho(k), u = momentum_u(k) / density, v = momentum_v(k) / density;
                     const T pressure = (init_data.gamma - T{1}) * (energy(k) - T(0.5) * density * (u * u + v * v));
                     const T sound_speed = Kokkos::sqrt(init_data.gamma * pressure / density);
+                    const T temperature = pressure / density;
                     switch (field)
                     {
-                    case 0: buffer[cell] = density; break;
-                    case 1: buffer[cell] = momentum_u(k); break;
-                    case 2: buffer[cell] = momentum_v(k); break;
-                    case 3: buffer[cell] = energy(k); break;
-                    case 4: buffer[cell] = pressure; break;
-                    case 5: buffer[cell] = sound_speed; break;
-                    case 6: buffer[cell] = Kokkos::sqrt(u * u + v * v) / sound_speed; break;
-                    case 7: buffer[3 * cell] = u; buffer[3 * cell + 1] = v; buffer[3 * cell + 2] = T{0}; break;
-                    case 8: buffer[cell] = (pressure - init_data.P_inf) / dynamic_pressure; break;
+                    case Density: buffer[cell] = density; break;
+                    case MomentumU: buffer[cell] = momentum_u(k); break;
+                    case MomentumV: buffer[cell] = momentum_v(k); break;
+                    case Energy: buffer[cell] = energy(k); break;
+                    case Pressure: buffer[cell] = pressure; break;
+                    case SoundSpeed: buffer[cell] = sound_speed; break;
+                    case Mach: buffer[cell] = Kokkos::sqrt(u * u + v * v) / sound_speed; break;
+                    case Velocity: buffer[3 * cell] = u; buffer[3 * cell + 1] = v; buffer[3 * cell + 2] = T{0}; break;
+                    case Temperature: buffer[cell] = temperature; break;
+                    case Viscosity: buffer[cell] = Solver::NumOps::eval_viscosity<T>(temperature, init_data.T_inf, init_data.mu_inf); break;
+                    case Cp: buffer[cell] = (pressure - init_data.P_inf) / dynamic_pressure; break;
                     }
                 }
             const std::uint64_t bytes = cells * components * sizeof(T);

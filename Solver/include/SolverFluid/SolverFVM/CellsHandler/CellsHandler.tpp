@@ -26,6 +26,9 @@ namespace Solver
             throw std::invalid_argument("Euler initialization requires gamma greater than one");
         if (!(flow.Mach_inf >= T{0}) || !Kokkos::isfinite(flow.Mach_inf) || !Kokkos::isfinite(flow.alpha))
             throw std::invalid_argument("Mach must be nonnegative and finite, and incidence finite");
+        // Checked for every solver: Euler2D does not use it, but an absurd input is refused rather than carried along.
+        if (!positive(flow.T_inf))
+            throw std::invalid_argument("The free-stream temperature must be positive and finite, in kelvin");
         if constexpr (SType == SolverTypes::RANS2D)
             if (!positive(flow.Re_inf) || !positive(flow.Pr_inf))
                 throw std::invalid_argument("RANS2D requires positive finite Reynolds and Prandtl numbers");

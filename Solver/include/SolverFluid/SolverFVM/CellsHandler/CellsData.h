@@ -41,6 +41,8 @@ namespace Solver
             
             Pressure = View1D<T>("Pressure", N_total_cells);
             SoundSpeed = View1D<T>("Soundspeed", N_total_cells);
+            Temperature = View1D<T>("Temperature", N_total_cells); // theta = p/rho
+            Viscosity = View1D<T>("Viscosity", N_total_cells); // Sutherland mu(theta), 0 for Euler2D
             Lambdas = View2D<T>("Lambdas", N_total_cells, meshdata.N_faces);
 
             
@@ -74,7 +76,7 @@ namespace Solver
 
         }
         View1D<T> Cell_Areas, Time_Step;
-        View1D<T> velocity_u, velocity_v, Pressure, SoundSpeed;
+        View1D<T> velocity_u, velocity_v, Pressure, SoundSpeed, Temperature, Viscosity;
         View1D<T> rho_old, Momentum_u_old, Momentum_v_old, E_old;
         View1D<T> rho_new, Momentum_u_new, Momentum_v_new, E_new;
         View1D<T> rho_0, Momentum_u_0, Momentum_v_0, Energy_0;
@@ -86,17 +88,16 @@ namespace Solver
         int N_total_cells, Ni_total_cells, Nj_total_cells;
     };
 
-    // Free-stream and wall conditions chosen by the user; every field can be set by name.
     template <typename T = float>
     struct FlowConditions
     {
-        T Mach_inf = T{0}, gamma = T(1.4), T_inf = T{288.15}, alpha = T{0}; // alpha is in radians.
+        T Mach_inf = T{0}, gamma = T(1.4), alpha = T{0}; // alpha is in radians.
         T Re_inf = std::numeric_limits<T>::infinity(), Pr_inf = T{1}; // Only used by the viscous solver.
         BoundaryCondition wall_condition = BoundaryCondition::AdiabaticWall;
         T wall_temperature = T{1}; // Same nondimensional temperature convention as p/rho.
+        T T_inf = T{288.15};
     };
 
-    // Flow conditions completed with the derived free-stream state.
     template <typename T = float>
     struct initialization_data : FlowConditions<T>
     {

@@ -91,15 +91,14 @@ namespace Solver::NumOps
 	T eval_viscosity(T Theta, T T_inf, T mu_inf)
 	{
 		T S = T{110.4}/T_inf;
-		T_
-		T mu = mu_inf*(C1 * Kokkos::pow(Theta, T{3}/T{2}))/(temperature + C2);
+		T mu = mu_inf*Theta*Kokkos::sqrt(Theta)*(T{1} + S)/(Theta + S);
 		return mu;
 	}
 	template <typename T>
 	KOKKOS_INLINE_FUNCTION
 	T eval_thermalconductivity(T mu, T gamma, T Prandtl)
 	{
-		T k = (gamma/(gamma - 1))*(mu/Prandtl);
+		T k = (gamma/(gamma - T{1}))*(mu/Prandtl);
 	
 		return k;
 	}

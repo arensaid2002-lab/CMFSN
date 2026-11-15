@@ -31,6 +31,7 @@ FIELDS = {
     "mach": "Mach",
     "density": "Densité",
     "temperature": "Température (p/ρ)",
+    "viscosity": "Viscosité (Sutherland)",
     "cp": "Coefficient de pression Cp",
     "velocity_u": "Vitesse u",
     "velocity_v": "Vitesse v",
@@ -100,7 +101,7 @@ STYLESHEET = Template("""
 """)
 
 # Short names used when reading the values of the cell under the cursor.
-PROBE_LABELS = {"pressure": "p", "mach": "M", "density": "ρ", "temperature": "θ", "cp": "Cp", "velocity_u": "u", "velocity_v": "v"}
+PROBE_LABELS = {"pressure": "p", "mach": "M", "density": "ρ", "temperature": "θ", "viscosity": "μ", "cp": "Cp", "velocity_u": "u", "velocity_v": "v"}
 COEFFICIENTS = (("cl", "Cl"), ("cd", "Cd"), ("cm", "Cm"))
 MAX_COEFFICIENT_SAMPLES = 200  # States read from a series to draw the evolution of the coefficients.
 MAX_GIF_FRAMES = 300  # A longer series is sampled evenly.
@@ -139,8 +140,9 @@ def prepare_solution(mesh) -> pv.StructuredGrid:
     mesh.cell_data["velocity_u"] = velocity[:, 0]
     mesh.cell_data["velocity_v"] = velocity[:, 1]
     mesh.cell_data["speed"] = np.linalg.norm(velocity, axis=1)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        mesh.cell_data["temperature"] = np.asarray(mesh.cell_data["pressure"]) / np.asarray(mesh.cell_data["density"])
+    if "temperature" not in mesh.cell_data:  # Files written before the solver exported it.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            mesh.cell_data["temperature"] = np.asarray(mesh.cell_data["pressure"]) / np.asarray(mesh.cell_data["density"])
     return mesh
 
 
@@ -167,7 +169,9 @@ def aerodynamic_coefficients(mesh):
 
     Pressure and velocity are taken at the first cell centres. The friction part is present only
     when the solution stores a Reynolds number: tau = mu * tangential velocity / wall distance,
-    with the solver's mu = M_inf * sqrt(gamma) / Re. Reference length: the chord (x extent of the
+    with the exported Sutherland viscosity of the first cells (the wall ghost cells share their
+    temperature at an adiabatic wall), or the constant mu_inf = M_inf * sqrt(gamma) / Re for files
+    written before the viscosity was exported. Reference length: the chord (x extent of the
     wall). Cm is about the quarter chord, positive nose-up. Returns None for a free stream at rest.
     """
     data = mesh.field_data
@@ -195,8 +199,11 @@ def aerodynamic_coefficients(mesh):
         unit = normal[valid] / length[valid, None]
         velocity = row("velocity")[valid, :2]
         tangential = velocity - np.einsum("ij,ij->i", velocity, unit)[:, None] * unit
-        viscosity = rho_inf * mach * np.sqrt(gamma * p_inf / rho_inf) / reynolds
-        friction_force[valid] = viscosity * tangential * (length[valid] ** 2 / distance[valid])[:, None]
+        if "viscosity" in mesh.cell_data:
+            viscosity = row("viscosity")[valid, 0]
+        else:
+            viscosity = np.full(int(valid.sum()), rho_inf * mach * np.sqrt(gamma * p_inf / rho_inf) / reynolds)
+        friction_force[valid] = viscosity[:, None] * tangential * (length[valid] ** 2 / distance[valid])[:, None]
     wall_x = points[0, :, 0]
     chord = float(np.ptp(wall_x))
     if not chord > 0:

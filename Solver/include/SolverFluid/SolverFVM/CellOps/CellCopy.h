@@ -77,7 +77,7 @@ namespace Solver
 			}
             if constexpr (Fields == CellCopyFields::OldState || Fields == CellCopyFields::States || Fields == CellCopyFields::All)
             {
-                detail::copy_cell_views(k_source, k_destination, cellsdata.Pressure, cellsdata.SoundSpeed);
+                detail::copy_cell_views(k_source, k_destination, cellsdata.Pressure, cellsdata.SoundSpeed, cellsdata.Temperature, cellsdata.Viscosity);
             }
             if constexpr (Fields == CellCopyFields::All)
             {

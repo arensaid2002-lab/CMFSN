@@ -64,6 +64,8 @@ namespace Tests
             Kokkos::deep_copy(cells.Momentum_v_old,rho*v);
             Kokkos::deep_copy(cells.Pressure,pressure);
             Kokkos::deep_copy(cells.SoundSpeed,T(std::sqrt(init.gamma*theta)));
+            Kokkos::deep_copy(cells.Temperature,theta);
+            Kokkos::deep_copy(cells.Viscosity,Solver::NumOps::eval_viscosity(theta,init.T_inf,init.mu_inf));
             Kokkos::deep_copy(cells.E_old,pressure/(init.gamma-T{1})+T(.5)*rho*(u*u+v*v));
         }
         int index(int i,int j) const {return Cell_index(i,j,cells.Ni_total_cells);}

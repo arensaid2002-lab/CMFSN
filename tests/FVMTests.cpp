@@ -8,10 +8,12 @@
 #include <iostream>
 #include <iterator>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 using namespace Tests;
 
-template<typename T> void affine_fields(const CellsData<T>& cells)
+template<typename T> void affine_fields(const CellsData<T>& cells,const initialization_data<T>& init)
 {
     Kokkos::parallel_for("TestAffineFields",Kokkos::RangePolicy<E>(0,cells.N_total_cells),KOKKOS_LAMBDA(int k){
         const T x=cells.Cell_Centers(k,0),y=cells.Cell_Centers(k,1);
@@ -19,6 +21,7 @@ template<typename T> void affine_fields(const CellsData<T>& cells)
         const T theta=T(1.5)+T(.05)*x+T(.1)*y;
         cells.rho_old(k)=T{1};cells.Momentum_u_old(k)=u;cells.Momentum_v_old(k)=v;
         cells.Pressure(k)=theta;cells.SoundSpeed(k)=Kokkos::sqrt(T(1.4)*theta);
+        cells.Temperature(k)=theta;cells.Viscosity(k)=Solver::NumOps::eval_viscosity(theta,init.T_inf,init.mu_inf);
         cells.E_old(k)=theta/T(.4)+T(.5)*(u*u+v*v);
     });
 }
@@ -129,7 +132,7 @@ template<typename T> void gradients()
 {
     for(bool curved:{false,true})
     {
-        Fixture<T> f(curved);const auto cells=f.cells;affine_fields(cells);
+        Fixture<T> f(curved);const auto cells=f.cells;affine_fields(cells,f.init);
         Kokkos::View<T***> result("test_gradients",cells.N_physical_cells,4,6);
         Kokkos::parallel_for("TestGradients",Kokkos::RangePolicy<E>(0,cells.N_physical_cells),KOKKOS_LAMBDA(int p){
             const int k=Cell_index(p%cells.Ni_physical_cells+3,p/cells.Ni_physical_cells+3,cells.Ni_total_cells);
@@ -149,22 +152,70 @@ template<typename T> void constitutive()
 {
     const auto tau=Solver::NumOps::Tau(T{2},Kokkos::Array<T,4>{T(.2),T(.15),T(-.1),T(.25)});
     near(tau[0],.2,tolerance<T>(),"tau_xx");near(tau[1],.4,tolerance<T>(),"tau_yy");near(tau[2],.1,tolerance<T>(),"tau_xy");
+    // Nondimensional Sutherland law: mu(theta) = mu_inf*theta^1.5*(1+S)/(theta+S), S = 110.4/T_inf. Compared in units of mu_inf.
+    const T mu_inf=T(.003),T_inf=T(288.15);
+    near(Solver::NumOps::eval_viscosity(T{1},T_inf,mu_inf)/mu_inf,1.,tolerance<T>(),"Sutherland: mu(theta_inf) is not mu_inf");
+    near(Solver::NumOps::eval_viscosity(T{2},T_inf,mu_inf)/mu_inf,1.6415751136851524,tolerance<T>(),"Sutherland reference value");
+    // Independent reference: ratio of the dimensional law mu = C1*T^1.5/(T+110.4) at T_inf*theta and at T_inf.
+    const auto dimensional=[](double t){return 1.458e-6*t*std::sqrt(t)/(t+110.4);};
+    for(double theta:{.5,1.3,2.,4.})
+        near(Solver::NumOps::eval_viscosity(T(theta),T_inf,mu_inf)/mu_inf,dimensional(theta*288.15)/dimensional(288.15),tolerance<T>(),"Sutherland ratio");
+    near(Solver::NumOps::eval_thermalconductivity(mu_inf,T(1.4),T(.72))/mu_inf,4.861111111111111,tolerance<T>(),"Thermal conductivity");
 }
 template<typename T> void periodic()
 {
     Fixture<T> f;const auto cells=f.cells;
-    Kokkos::parallel_for("TestPeriodicSources",Kokkos::RangePolicy<E>(0,cells.N_total_cells),KOKKOS_LAMBDA(int k){cells.rho_old(k)=T(1)+T(.001)*k;});
-    const auto before=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.rho_old);
+    Kokkos::parallel_for("TestPeriodicSources",Kokkos::RangePolicy<E>(0,cells.N_total_cells),KOKKOS_LAMBDA(int k){
+        cells.rho_old(k)=T(1)+T(.001)*k;cells.Temperature(k)=T(2)+T(.001)*k;cells.Viscosity(k)=T(.01)+T(1e-5)*k;});
+    // Density, and the derived temperature and viscosity, which the periodic copy must carry like the sound speed.
+    const std::pair<Kokkos::View<T*>,std::string> fields[3]={{cells.rho_old,"density"},{cells.Temperature,"temperature"},{cells.Viscosity,"viscosity"}};
+    std::vector<decltype(Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.rho_old))> before;
+    for(const auto& field:fields) before.push_back(Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),field.first));
     ApplyPeriodicity<E>(cells);
-    const auto after=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.rho_old);
-    for(int j=0;j<cells.Nj_total_cells;++j) for(int layer=0;layer<3;++layer)
+    for(int n=0;n<3;++n)
     {
-        const int left=f.index(layer,j),right=f.index(cells.Ni_physical_cells+3+layer,j);
-        near(after(left),before(left+cells.Ni_physical_cells),0,"Periodic left including corners");
-        near(after(right),before(f.index(3+layer,j)),0,"Periodic right including corners");
+        const auto after=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),fields[n].first);
+        const auto& name=fields[n].second;
+        for(int j=0;j<cells.Nj_total_cells;++j) for(int layer=0;layer<3;++layer)
+        {
+            const int left=f.index(layer,j),right=f.index(cells.Ni_physical_cells+3+layer,j);
+            near(after(left),before[n](left+cells.Ni_physical_cells),0,"Periodic left including corners ("+name+")");
+            near(after(right),before[n](f.index(3+layer,j)),0,"Periodic right including corners ("+name+")");
+        }
+        for(int j=3;j<3+cells.Nj_physical_cells;++j) for(int i=3;i<3+cells.Ni_physical_cells;++i)
+            near(after(f.index(i,j)),before[n](f.index(i,j)),0,"Periodicity changed physical state ("+name+")");
     }
-    for(int j=3;j<3+cells.Nj_physical_cells;++j) for(int i=3;i<3+cells.Ni_physical_cells;++i)
-        near(after(f.index(i,j)),before(f.index(i,j)),0,"Periodicity changed physical state");
+}
+// The derived fields refreshed from a conservative state: theta = p/rho and the Sutherland viscosity mu(theta).
+template<typename T> void derived_fields()
+{
+    Fixture<T> f;const auto cells=f.cells;const auto init=f.init;
+    const T rho=T(.8),u=T(.3),v=T(-.1),p=T(1.4);
+    const int k=f.index(5,4);
+    const Kokkos::Array<T,4> state={rho,rho*u,rho*v,Solver::NumOps::eval_Energy<T>(rho,u,v,p,init.gamma)};
+    Kokkos::parallel_for("TestDerivedFields",1,KOKKOS_LAMBDA(int){Update_DataField<T,DataFields::Conservative_Old>(state,cells,init,k);});
+    const auto temperature=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Temperature);
+    const auto viscosity=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Viscosity);
+    const double theta=double(p)/double(rho);
+    near(temperature(k),theta,tolerance<T>(),"Temperature is not p/rho");
+    const double mu_ref=Solver::NumOps::eval_viscosity<double>(theta,double(init.T_inf),double(init.mu_inf));
+    near(viscosity(k)/init.mu_inf,mu_ref/init.mu_inf,tolerance<T>(),"Viscosity is not mu(theta)");
+    // Initial conditions: the free stream, theta_inf = 1 and mu = mu_inf.
+    ApplyInitialConditions<E>(cells,init);E().fence();
+    const auto t0=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Temperature);
+    const auto mu0=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Viscosity);
+    for(int n=0;n<cells.N_total_cells;++n)
+    {
+        near(t0(n),1.,tolerance<T>(),"Initial temperature");
+        near(mu0(n)/init.mu_inf,1.,tolerance<T>(),"Initial viscosity");
+    }
+    // Inviscid conditions built without the constructor's validation: mu_inf = 0 gives exactly zero, even with a
+    // T_inf that would make Sutherland NaN (S = 110.4/0).
+    FlowConditions<T> euler_flow{T(.2),T(1.4)};euler_flow.T_inf=T{0};
+    const initialization_data<T> euler_init(euler_flow);
+    Kokkos::parallel_for("TestInviscidViscosity",1,KOKKOS_LAMBDA(int){Update_DataField<T,DataFields::Conservative_Old>(state,cells,euler_init,k);});
+    const auto mu_euler=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Viscosity);
+    require(mu_euler(k)==T{0},"Inviscid viscosity is not exactly zero");
 }
 template<typename T,bool Isothermal> void wall()
 {
@@ -218,7 +269,7 @@ template<typename T> void farfield()
 }
 template<typename T> void jst()
 {
-    Fixture<T> f(true);const auto cells=f.cells;affine_fields(cells);physical_fluxes(cells);
+    Fixture<T> f(true);const auto cells=f.cells;affine_fields(cells,f.init);physical_fluxes(cells);
     ApplyWallConditions<E,T,SolverTypes::RANS2D,BoundaryCondition::isothermalWall>(cells,f.init,T{1});
     Kokkos::deep_copy(cells.Lambdas,T{2});
     Kokkos::View<T***> result("test_jst",cells.N_physical_cells,4,4);
@@ -246,7 +297,7 @@ template<typename T> void jst()
             const long double prev=pressure(stencil[a-1]),center=pressure(stencil[a]),next=pressure(stencil[a+1]);
             sensor=std::max(sensor,std::abs(next-2*center+prev)/(next+2*center+prev));
         }
-        const long double second=.6L*sensor,fourth=std::max(0.L,1.L/64-second);
+        const long double second=.5L*sensor,fourth=std::max(0.L,1.L/64-second);
         for(int c=0;c<4;++c) {
             long double w[4];
             for(int a=0;a<4;++a) {const int index=stencil[a+1];w[a]=c==0?rho(index):c==1?mx(index):c==2?my(index):energy(index);}
@@ -265,7 +316,7 @@ template<typename T> void viscous_flux()
     // the affine field then replaces every state, ghosts included, so the analytic tractions hold up to the boundaries.
     ApplyWallConditions<E,T,SolverTypes::RANS2D,BoundaryCondition::AdiabaticWall>(cells,init,T{1});
     ApplyRiemanInvariantConditions<E>(cells,init);E().fence();
-    affine_fields(cells);physical_fluxes(cells);boundary_ghost_fluxes(cells);
+    affine_fields(cells,f.init);physical_fluxes(cells);boundary_ghost_fluxes(cells);
     Kokkos::View<T***> results("test_flux",cells.N_physical_cells,4,12);
     Kokkos::parallel_for("TestFlux",Kokkos::RangePolicy<E>(0,cells.N_physical_cells),KOKKOS_LAMBDA(int p){
         const int k=Cell_index(p%cells.Ni_physical_cells+3,p/cells.Ni_physical_cells+3,cells.Ni_total_cells);
@@ -278,19 +329,27 @@ template<typename T> void viscous_flux()
     });
     const auto result=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),results);
     const auto normals=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Normals);
-    const auto positions=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Cell_Centers);
+    const auto pressure=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Pressure);
+    const auto rho=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.rho_old);
+    // Sutherland viscosity of a cell, from its temperature theta = p/rho (the affine field makes theta vary in space).
+    const auto mu_at=[&](int k){return Solver::NumOps::eval_viscosity<double>(double(pressure(k))/double(rho(k)),double(init.T_inf),double(init.mu_inf));};
+    const int offset[4]={-cells.Ni_total_cells,1,cells.Ni_total_cells,-1};
     for(int p=0;p<cells.N_physical_cells;++p) for(int d=0;d<4;++d)
     {
         const int i=p%cells.Ni_physical_cells,j=p/cells.Ni_physical_cells,k=f.index(i+3,j+3);
-        const double nx=normals(k,d,0),ny=normals(k,d,1),mu=init.mu_inf;
-        near(result(p,d,1),mu*(.1*nx+.05*ny),tolerance<T>(),"Viscous x traction");
-        near(result(p,d,2),mu*(.05*nx+.2*ny),tolerance<T>(),"Viscous y traction");
+        const double nx=normals(k,d,0),ny=normals(k,d,1),mu=mu_at(k),mu_side=mu_at(k+offset[d]);
+        require(std::abs(mu/init.mu_inf-1)>1e-2,"Test field too close to theta_inf: Sutherland would go unnoticed");
+        near(result(p,d,1)/mu,.1*nx+.05*ny,tolerance<T>(),"Viscous x traction");
+        near(result(p,d,2)/mu,.05*nx+.2*ny,tolerance<T>(),"Viscous y traction");
         // Wall (d==0, j==0) and farfield (d==2, last j) faces are included: the full viscous flux must cross them, not half of it.
         // Only the i-boundaries are left out: this test grid is not periodic.
         const bool assembled=d==0||d==2||(d==1&&i+1<cells.Ni_physical_cells)||(d==3&&i>0);
         const bool boundary=(d==0&&j==0)||(d==2&&j+1==cells.Nj_physical_cells);
+        // Each side evaluates the face flux with its own viscosity and the face averages them: with exact (affine) gradients
+        // the assembled viscous flux is the cell's own one scaled by (mu + mu_side) / (2 mu).
+        const double face_scale=(mu+mu_side)/(2*mu);
         // Compared in units of mu: the viscous fluxes are of order mu, well below the tolerance of an unscaled comparison in float.
-        if(assembled) for(int c=0;c<4;++c) near(result(p,d,8+c)/mu,result(p,d,c)/mu,20*tolerance<T>(),boundary?"Boundary viscous flux is not the full flux":"Viscous flux sign");
+        if(assembled) for(int c=0;c<4;++c) near(result(p,d,8+c)/mu,face_scale*result(p,d,c)/mu,20*tolerance<T>(),boundary?"Boundary viscous flux is not the full flux":"Viscous flux sign");
         if((d==1&&i+1<cells.Ni_physical_cells)||(d==2&&j+1<cells.Nj_physical_cells))
         {
             const int neighbour=p+(d==1?1:cells.Ni_physical_cells);
@@ -307,6 +366,14 @@ template<typename T> void time_step()
     const auto area=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Cell_Areas);
     near(result(0),.5*area(k)/2,tolerance<T>(),"Convective time step");
     require(result(1)>0&&result(1)<result(0),"Viscous restriction missing");near(result(2),result(1)/2,tolerance<T>(),"CFL scaling");
+    // Viscous part of the spectral radius, recovered from the step: mu(theta)/rho*(4/3+gamma/Pr)*sum(L^2)/A, with the local
+    // Sutherland viscosity of the uniform fixture (theta = 1.2, rho = 1), about 15 % above mu_inf.
+    const auto normals=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Normals);
+    double sum_l2=0;for(int d=0;d<4;++d) sum_l2+=double(normals(k,d,2))*double(normals(k,d,2));
+    const double mu=Solver::NumOps::eval_viscosity<double>(1.2,double(init.T_inf),double(init.mu_inf));
+    const double viscous_expected=mu*(4./3+double(init.gamma)/double(init.Pr_inf))*sum_l2/double(area(k));
+    const double viscous_measured=.5*double(area(k))/double(result(1))-2;
+    near(viscous_measured/viscous_expected,1.,tolerance<T>(),"Viscous time step does not use the local viscosity");
 }
 template<typename T> void constructors()
 {
@@ -317,11 +384,30 @@ template<typename T> void constructors()
     require(iso.get_InitializationData().wall_condition==BoundaryCondition::isothermalWall,"Wall selector lost");
     near(iso.get_InitializationData().wall_temperature,.9,tolerance<T>(),"Wall temperature lost");
     near(iso.get_InitializationData().mu_inf,double(T(.2)*std::sqrt(T(1.4))/T{250}),tolerance<T>(),"Reynolds not propagated");
+    // T_inf comes last: the positional initialisations above keep the default free-stream temperature.
+    near(iso.get_InitializationData().T_inf/288.15,1.,tolerance<T>(),"Default free-stream temperature lost");
     invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{0},T(.72)},mesh);},"Zero Reynolds accepted");
     invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{250},T{0}},mesh);},"Zero Prandtl accepted");
     invalid([&]{Viscous bad({T(.2),T{1},T{0},T{250},T(.72)},mesh);},"Invalid gamma accepted");
     invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{250},T(.72),BoundaryCondition::isothermalWall,T{0}},mesh);},"Nonpositive wall temperature accepted");
     invalid([&]{Viscous bad({T(.2)},mesh);},"Viscous solver accepted the default infinite Reynolds");
+    // Sutherland divides by T_inf (S = 110.4/T_inf): a nonpositive, infinite or NaN free-stream temperature is refused,
+    // by Euler2D too, which does not use it.
+    FlowConditions<T> cold{T(.2),T(1.4),T{0},T{250},T(.72)};
+    for(T t_inf:{T{0},T(-100),std::numeric_limits<T>::infinity(),std::numeric_limits<T>::quiet_NaN()})
+    {
+        cold.T_inf=t_inf;
+        invalid([&]{Viscous bad(cold,mesh);},"Invalid free-stream temperature accepted by RANS2D");
+        invalid([&]{SolverFVM<T> bad(cold,mesh);},"Invalid free-stream temperature accepted by Euler2D");
+    }
+    // Euler2D: zero viscosity everywhere, ghosts included, after the initial state and after one iteration.
+    cold.T_inf=T(288.15);SolverFVM<T> inviscid_run(cold,mesh);
+    const auto zero_viscosity=[&](const char* when){
+        const auto mu=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),inviscid_run.get_CellsData().Viscosity);
+        for(std::size_t k=0;k<mu.extent(0);++k) require(mu(k)==T{0},std::string("Euler2D viscosity is not zero ")+when);
+    };
+    zero_viscosity("after initialisation");
+    inviscid_run.run(1);zero_viscosity("after one iteration");
     FlowConditions<T> named;named.Mach_inf=T(.3);named.Re_inf=T{100};
     Viscous by_name(named,mesh);
     near(by_name.get_InitializationData().gamma,1.4,tolerance<T>(),"Default gamma lost");
@@ -387,13 +473,44 @@ template<typename T> void export_solution()
         std::memcpy(&actual,bytes.data()+pos+marker.size()+sizeof(length)+p*sizeof(T),sizeof(T));
         near(actual,T(1)+T(.001)*f.index(i+3,j+3),tolerance<T>(),"Export indexing changed");
     }
+    // Temperature and viscosity, located by name, are rebuilt from the conservative state like the pressure.
+    const auto array_value=[&](const std::string& name,int p){
+        const auto tag=bytes.find("Name=\""+name+"\"");
+        require(tag!=std::string::npos,"Missing exported field "+name);
+        const auto at=bytes.find("offset=\"",tag)+8;
+        const std::uint64_t offset=std::stoull(bytes.substr(at,bytes.find('"',at)-at));
+        T value;std::memcpy(&value,bytes.data()+pos+marker.size()+offset+sizeof(std::uint64_t)+p*sizeof(T),sizeof(T));
+        return double(value);
+    };
+    require(bytes.find("Name=\"t_inf_kelvin\"")!=std::string::npos,"Free-stream temperature missing from the metadata");
+    const auto rho=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.rho_old);
+    const auto mx=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Momentum_u_old);
+    const auto my=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Momentum_v_old);
+    const auto energy=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.E_old);
+    for(int p=0;p<cells.N_physical_cells;++p)
+    {
+        const int k=f.index(p%cells.Ni_physical_cells+3,p/cells.Ni_physical_cells+3);
+        const double r=rho(k),u=mx(k)/r,v=my(k)/r;
+        const double theta=(double(f.init.gamma)-1)*(energy(k)-.5*r*(u*u+v*v))/r;
+        near(array_value("temperature",p),theta,tolerance<T>(),"Exported temperature");
+        const double mu=Solver::NumOps::eval_viscosity<double>(theta,double(f.init.T_inf),double(f.init.mu_inf));
+        near(array_value("viscosity",p)/f.init.mu_inf,mu/f.init.mu_inf,tolerance<T>(),"Exported viscosity");
+    }
     input.close();std::filesystem::remove(path);
+    // Euler2D has no viscosity: neither the field nor T_inf is exported, the temperature still is.
+    const auto euler_path=std::filesystem::path(std::is_same_v<T,float>?"test-export-euler-float.vts":"test-export-euler-double.vts");
+    IO::Export_Solution<T>(euler_path.string(),f.mesh,cells,initialization_data<T>(inviscid(FlowConditions<T>(f.init))),7);
+    std::ifstream euler_input(euler_path,std::ios::binary);const std::string euler_bytes((std::istreambuf_iterator<char>(euler_input)),{});
+    require(euler_bytes.find("Name=\"temperature\"")!=std::string::npos,"Euler export lost the temperature");
+    require(euler_bytes.find("Name=\"viscosity\"")==std::string::npos&&euler_bytes.find("t_inf_kelvin")==std::string::npos,"Euler export wrote a viscosity");
+    euler_input.close();std::filesystem::remove(euler_path);
 }
 template<typename T> void dispatch(const std::string& name)
 {
     if(name=="indexing") indexing<T>();else if(name=="thermodynamics") thermodynamics<T>();
     else if(name=="geometry") geometry<T>();else if(name=="gradients") gradients<T>();
     else if(name=="constitutive") constitutive<T>();else if(name=="periodic") periodic<T>();
+    else if(name=="derived_fields") derived_fields<T>();
     else if(name=="wall_adiabatic") wall<T,false>();else if(name=="wall_isothermal") wall<T,true>();
     else if(name=="farfield") farfield<T>();else if(name=="viscous_flux") viscous_flux<T>();
     else if(name=="jst") jst<T>();
