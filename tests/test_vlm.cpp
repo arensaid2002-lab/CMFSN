@@ -68,7 +68,8 @@ int main()
     //    ni = 4 chord panels (5 camber points), nj = 6 span panels (7 stations), SineTip.
     // ---------------------------------------------------------------------
     nacawing::WingParams rect{.b = 8.0, .c_r = 1.0, .c_t = 1.0,
-                              .sweepLE = 0.0, .twistTip = 0.0, .dihedral = 0.0};
+                              .sweep = 0.0, .twistTip = 0.0, .dihedral = 0.0,
+                              .spacing = nacawing::SpanSpacing::SineTip};   // spacing is now a field of WingParams
     mesh::VlmGrid g = mesh::vlmGrid(rect, c2412, 6);
     failures += check("vlmGrid ni", g.ni, 4.0);
     failures += check("vlmGrid nj", g.nj, 6.0);

@@ -14,9 +14,9 @@
 // raylib is y-up, so toVec swaps them: CAD (x, y span, z up) -> raylib (x, z up, y span).
 //
 // Controls: drag with the left mouse button to turn around the wing, mouse wheel to zoom.
-// The panel on the left changes the airfoil (NACA digits) and the wing (span, chords, sweep, twist, twist pivot and exponent, dihedral, stations).
+// The panel on the left changes the airfoil (NACA digits) and the wing (span, chords, sweep, twist, xRef, twist exponent, dihedral, stations).
 // The buttons at the top right show the wing surface, the VLM grid (Mesh/VLMmesh.h) and the beam nodes (Mesh/BeamMesh.h),
-// and choose the span spacing (Uniform or SineTip). The VLM and the beam use the SAME Ns stations,
+// and choose the span spacing (Uniform or SineTip) and the chord law (Trapeze or Ellipse). The VLM and the beam use the SAME Ns stations,
 // so every beam node sits exactly on a spanwise line of the VLM grid.
 
 
@@ -85,28 +85,31 @@ int main()
     SetWindowMinSize(800, 450);
     SetTargetFPS(60);
 
-    // Airfoil: NACA digits M P TT (same spinners as naca_viewer), NACA 2412 to start.
-    int digitM = 2, digitP = 4, digitTT = 12;
+    // Airfoil: NACA digits M P TT (same spinners as naca_viewer), NACA 0012 (symmetric: m = 0, p = 0) to start.
+    int digitM = 0, digitP = 0, digitTT = 12;
     bool editM = false, editP = false, editTT = false;   // true while typing in that number box
     int n = 41;                                          // points per surface -> 2n - 1 = 81 points per section
     nacawing::NacaParams airfoil = nacawing::fromDigits(digitM, digitP, digitTT);
 
-    // Wing: starts as the doc's example wing (b = 8 m, c_r = 1 m, c_t = 0.5 m, 20 deg sweep, -4 deg twist).
+    // Wing: starts as a plain tapered wing (b = 8 m, c_r = 1 m, c_t = 0.5 m, no sweep, no twist, no dihedral).
     // raygui sliders work with float, so the inputs are floats here and become doubles in WingParams.
     float span = 8.0f;          // [m]   b, full tip-to-tip span
     float rootChord = 1.0f;     // [m]   c_r
     float tipChord = 0.5f;      // [m]   c_t
-    float sweep = 20.0f;        // [deg] leading-edge sweep
-    float twist = -4.0f;        // [deg] tip twist (negative = washout, nose down at the tip)
+    float sweep = 0.0f;         // [deg] sweep of the xRef line (xRef = 0: LE sweep, 0.25: quarter-chord sweep)
+    float twist = 0.0f;         // [deg] tip twist (negative = washout, nose down at the tip)
     float twistPivot = 0.25f;   // [-]   fraction of the local chord the twist turns around (0 = LE, 1 = TE)
+    float xRef = 0.25f;         // [-]   fraction of the local chord that stays on a straight line (0 = LE, 1 = TE)
     float twistExponent = 1.0f; // [-]   p in eps(eta) = eps_t * eta^p (1 = linear); the slider keeps it > 0
     float dihedral = 0.0f;      // [deg]
-    float stations = 11.0f;     // Ns, number of sections from root to tip (rounded to an int below)
+    float stations = 3.0f;      // Ns, number of sections from root to tip (rounded to an int below)
     bool mirror = false;        // also draw the left half
 
     // What to draw (buttons at the top right) and how the stations are spread along the span.
     bool showWing = true, showVlm = false, showBeam = false;
     int spacingChoice = 1;              // 0 = Uniform, 1 = SineTip (the default for the VLM and the beam)
+    int chordLawChoice = 0;             // 0 = Trapeze (uses c_t), 1 = Ellipse (c = c_r sqrt(1 - eta^2), c_t ignored)
+    bool showXRef = true;               // draw the xRef line (the straight line at x = xRef c on every station)
     const int niVlm = 8;                // chordwise VLM panels (ni), fixed here: only the span spacing is compared
     float beamFraction = 0.38f;         // beam node at x = f c along the camber line (slider; 0.38 = proposal, structure team to decide)
 
@@ -132,19 +135,29 @@ int main()
 
         // 1. Geometry. Rebuilt every frame: it is only Ns x (2n - 1) points, so it is cheap,
         //    and it means every slider change shows up at once without extra bookkeeping.
-        nacawing::WingParams w{.b = span, .c_r = rootChord, .c_t = tipChord,
-                                   .sweepLE = sweep, .twistTip = twist, .dihedral = dihedral,
-                                   .twistPivot = twistPivot, .twistExponent = twistExponent};
-        int Ns = static_cast<int>(std::lround(stations));
-        std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(airfoil.m, airfoil.p, airfoil.t, n);
         nacawing::SpanSpacing spacing = (spacingChoice == 0) ? nacawing::SpanSpacing::Uniform
                                                              : nacawing::SpanSpacing::SineTip;
-        std::vector<std::vector<nacawing::Point3D>> wing = nacawing::wingSurface(w, loop, Ns, spacing);
+        nacawing::ChordLaw chordLaw = (chordLawChoice == 0) ? nacawing::ChordLaw::Trapeze
+                                                            : nacawing::ChordLaw::Ellipse;
+        nacawing::WingParams w{.b = span, .c_r = rootChord, .c_t = tipChord,
+                               .sweep = sweep, .twistTip = twist, .dihedral = dihedral,
+                               .twistPivot = twistPivot, .xRef = xRef, .twistExponent = twistExponent,
+                               .spacing = spacing, .type = chordLaw};
+        int Ns = static_cast<int>(std::lround(stations));
+        std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(airfoil.m, airfoil.p, airfoil.t, n);
+        std::vector<std::vector<nacawing::Point3D>> wing = nacawing::wingSurface(w, loop, Ns);   // spacing is in w now
+
+        // xRef line: the point (xRef, 0) of the unit chord, placed at every station y_j of the wing.
+        // It should come out as a straight line swept by "sweep" (that is what xRef means).
+        std::vector<nacawing::Point2D> refPoint{{static_cast<double>(xRef), 0.0}};
+        std::vector<nacawing::Point3D> refLine;
+        for (const auto& q : wing[0])                               // wing[0][j].y = span station j
+            refLine.push_back(nacawing::sectionAt(w, refPoint, q.y)[0]);
 
         // Meshes on the same Ns stations: nj = Ns - 1 panels/elements along the span.
         int nj = Ns - 1;
-        mesh::VlmGrid vlm = mesh::vlmGrid(w, mesh::nacaCambrure(airfoil.m, airfoil.p, niVlm + 1), nj, spacing);
-        std::vector<mesh::NastranData> beam = mesh::BeamMesh(w, mesh::nacaCambrurePoint(airfoil.m, airfoil.p, static_cast<double>(beamFraction)), nj, spacing);
+        mesh::VlmGrid vlm = mesh::vlmGrid(w, mesh::nacaCambrure(airfoil.m, airfoil.p, niVlm + 1), nj);      // spacing = w.spacing
+        std::vector<mesh::NastranData> beam = mesh::BeamMesh(w, mesh::nacaCambrurePoint(airfoil.m, airfoil.p, static_cast<double>(beamFraction)), nj);
 
         // 2. Camera. Drag outside the panel to turn, wheel to zoom.
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(GetMousePosition(), panel)) {
@@ -178,6 +191,12 @@ int main()
             drawHalfWing(wing, 1.0f);
             if (mirror) drawHalfWing(wing, -1.0f);
         }
+        if (showXRef) {
+            for (size_t j = 0; j + 1 < refLine.size(); ++j) {
+                DrawLine3D(toVec(refLine[j], 1.0f), toVec(refLine[j + 1], 1.0f), MAGENTA);
+                if (mirror) DrawLine3D(toVec(refLine[j], -1.0f), toVec(refLine[j + 1], -1.0f), MAGENTA);
+            }
+        }
         if (showVlm) {
             drawHalfVlm(vlm, 1.0f);
             if (mirror) drawHalfVlm(vlm, -1.0f);
@@ -201,18 +220,22 @@ int main()
         else DrawText("M and P must be both 0 or both > 0", F(12), F(80), F(10), RED);
 
         // Sliders: label on the left, value on the right, the bar in between.
+        // Rows are 22 px apart (not 24) so the 10 sliders + the numbers below still fit in an 800 x 450 window.
         float y = S(100);
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "span b", TextFormat("%.1f m", span), &span, 1.0f, 20.0f);              y += S(24);
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "root c_r", TextFormat("%.2f m", rootChord), &rootChord, 0.2f, 3.0f);  y += S(24);
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "tip c_t", TextFormat("%.2f m", tipChord), &tipChord, 0.05f, 3.0f);    y += S(24);
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "sweep LE", TextFormat("%.0f deg", sweep), &sweep, -20.0f, 60.0f);     y += S(24);
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "tip twist", TextFormat("%.1f deg", twist), &twist, -10.0f, 10.0f);    y += S(24);
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "twist pivot", TextFormat("%.2f c", twistPivot), &twistPivot, 0.0f, 1.0f); y += S(24);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "span b", TextFormat("%.1f m", span), &span, 1.0f, 20.0f);              y += S(22);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "root c_r", TextFormat("%.2f m", rootChord), &rootChord, 0.2f, 3.0f);  y += S(22);
+        if (chordLawChoice == 1) GuiDisable();      // Ellipse: c_t is not used, so its slider is greyed out
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "tip c_t", TextFormat("%.2f m", tipChord), &tipChord, 0.05f, 3.0f);    y += S(22);
+        GuiEnable();
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "sweep xRef", TextFormat("%.1f deg", sweep), &sweep, -20.0f, 60.0f);   y += S(22);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "xRef", TextFormat("%.2f c", xRef), &xRef, 0.0f, 1.0f);                y += S(22);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "twist pivot", TextFormat("%.2f c", twistPivot), &twistPivot, 0.0f, 1.0f); y += S(22);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "tip twist", TextFormat("%.1f deg", twist), &twist, -10.0f, 10.0f);    y += S(22);
         // Exponent range 0.25..3: never 0 (eta^0 = 1 would twist the root too), the library needs p > 0.
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "twist exp p", TextFormat("%.2f", twistExponent), &twistExponent, 0.25f, 3.0f); y += S(24);
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "dihedral", TextFormat("%.1f deg", dihedral), &dihedral, -10.0f, 15.0f); y += S(24);
-        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "stations", TextFormat("%i", Ns), &stations, 2.0f, 41.0f);             y += S(28);
-        GuiCheckBox(Rectangle{S(12), y, S(14), S(14)}, "mirror left half", &mirror);                                          y += S(30);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "twist exp p", TextFormat("%.2f", twistExponent), &twistExponent, 0.25f, 3.0f); y += S(22);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "dihedral", TextFormat("%.1f deg", dihedral), &dihedral, -10.0f, 15.0f); y += S(22);
+        GuiSliderBar(Rectangle{S(70), y, S(110), S(14)}, "stations", TextFormat("%i", Ns), &stations, 2.0f, 41.0f);             y += S(26);
+        GuiCheckBox(Rectangle{S(12), y, S(14), S(14)}, "mirror left half", &mirror);                                          y += S(26);
 
         // The wing numbers (reference values for the aero coefficients later).
         DrawText(TextFormat("taper ratio  %.3f", nacawing::taperRatio(w)), F(12), static_cast<int>(y), F(10), DARKGRAY);           y += S(16);
@@ -226,12 +249,16 @@ int main()
         GuiToggle(Rectangle{right - S(250), S(10), S(76), S(22)}, "Wing", &showWing);
         GuiToggle(Rectangle{right - S(170), S(10), S(76), S(22)}, "VLM mesh", &showVlm);
         GuiToggle(Rectangle{right - S(90), S(10), S(76), S(22)}, "Beam mesh", &showBeam);
-        GuiToggleGroup(Rectangle{right - S(250), S(38), S(116), S(22)}, "Uniform;Sine (tip)", &spacingChoice);
+        // GuiToggleGroup: the Rectangle width is the width of EACH button, not of the whole group,
+        // so each group gets its own row (2 buttons x 76 px).
+        GuiToggleGroup(Rectangle{right - S(250), S(38), S(76), S(22)}, "Uniform;Sine (tip)", &spacingChoice);
+        GuiToggleGroup(Rectangle{right - S(250), S(64), S(76), S(22)}, "Trapeze;Ellipse", &chordLawChoice);
         DrawText(TextFormat("VLM %i x %i panels   beam %i nodes, %i elements", niVlm, nj, nj + 1, nj),
-                 static_cast<int>(right - S(250)), F(66), F(10), DARKGRAY);
-        DrawText("same stations: each beam node is on a VLM chord line", static_cast<int>(right - S(250)), F(80), F(10), DARKGRAY);
+                 static_cast<int>(right - S(250)), F(92), F(10), DARKGRAY);
+        DrawText("same stations: each beam node is on a VLM chord line", static_cast<int>(right - S(250)), F(106), F(10), DARKGRAY);
         // Chordwise position of the beam node, as a fraction of the local chord (0 = LE, 1 = TE).
-        GuiSliderBar(Rectangle{right - S(190), S(96), S(110), S(14)}, "beam x/c", TextFormat("%.2f c", beamFraction), &beamFraction, 0.0f, 1.0f);
+        GuiSliderBar(Rectangle{right - S(190), S(122), S(110), S(14)}, "beam x/c", TextFormat("%.2f c", beamFraction), &beamFraction, 0.0f, 1.0f);
+        GuiCheckBox(Rectangle{right - S(250), S(144), S(14), S(14)}, "xRef line (magenta)", &showXRef);
 
         DrawText("drag: turn   wheel: zoom", F(12), GetScreenHeight() - F(20), F(10), GRAY);
         EndDrawing();

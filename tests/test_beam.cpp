@@ -52,7 +52,9 @@ int main()
     // ---------------------------------------------------------------------
     nacawing::WingParams w{};
     w.b = 8.0;  w.c_r = 1.0;  w.c_t = 0.5;
-    w.sweepLE = 20.0;  w.twistTip = 0.0;  w.dihedral = 0.0;
+    w.sweep = 20.0;  w.twistTip = 0.0;  w.dihedral = 0.0;
+    w.xRef = 0.0;                                   // sweep is measured on the LE (x = 0 c), as before
+    w.spacing = nacawing::SpanSpacing::SineTip;     // was the default of BeamMesh, now a field of WingParams
     const int nj = 6;
 
     std::vector<mesh::NastranData> g = mesh::BeamMesh(w, pt, nj);
@@ -86,7 +88,9 @@ int main()
     // ---------------------------------------------------------------------
     // 3. Uniform spacing: y_j = (b/2) j / nj.
     // ---------------------------------------------------------------------
-    std::vector<mesh::NastranData> gu = mesh::BeamMesh(w, pt, nj, nacawing::SpanSpacing::Uniform);
+    nacawing::WingParams wu = w;
+    wu.spacing = nacawing::SpanSpacing::Uniform;
+    std::vector<mesh::NastranData> gu = mesh::BeamMesh(wu, pt, nj);
     failures += check("Uniform node 2 y = 4 * 2/6", gu[2].y, 4.0 * 2.0 / 6.0);
 
     // ---------------------------------------------------------------------
@@ -138,6 +142,7 @@ int main()
         failures += check("writeNastran last id", values[4 * nj], nj + 1.0);
         failures += check("writeNastran last y", values[4 * nj + 2], 4.0, 1e-5);
     }
+    in.close();                         // Windows cannot delete a file that is still open (remove would throw)
     std::filesystem::remove(file);
 
     std::cout << (failures == 0 ? "ALL TESTS PASSED\n" : "SOME TESTS FAILED\n");
