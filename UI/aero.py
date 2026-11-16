@@ -12,24 +12,78 @@ def _field(mesh, name, default):
     return float(mesh.field_data[name][0]) if name in mesh.field_data else default
 
 
-WALL_PRESSURE_METHODS = ("cell", "extrapolated")
-# "cell" is the default: it is the pressure of the solver's own wall flux. The slip wall copies the first
-# cell's pressure into the ghost cell (zero normal pressure gradient), so the face pressure is p1. On a
-# curved wall the true gradient is rho V^2 / R; the solver's first rows do not follow it, and a linear
-# extrapolation from them moves the coefficients away from the discrete solution instead of improving them.
+WALL_PRESSURE_METHODS = ("auto", "rizzi", "cell", "extrapolated")
+# "auto" is the default: the pressure of the solver's own wall flux.
+#   Euler2D (no "reynolds_inf" in the file): the slip wall extrapolates the pressure into the ghost cells with
+#   Rizzi's normal-momentum relation and imposes P_f = p1 - P_eta / 2 on the wall face -> "rizzi".
+#   RANS2D: the no-slip ghost copies p1 (zero normal pressure gradient), so the face pressure is p1 -> "cell".
+# "extrapolated" (linear, from the first two cells) is kept for comparison only.
 
 
-def wall_pressure(mesh, method="cell"):
+def _is_viscous(mesh):
+    reynolds = _field(mesh, "reynolds_inf", np.inf)
+    return bool(np.isfinite(reynolds) and reynolds > 0)
+
+
+def resolve_wall_pressure_method(mesh, method):
+    """The method actually used: "auto" becomes "rizzi" for an inviscid solution, "cell" for a viscous one."""
+    if method not in WALL_PRESSURE_METHODS:
+        raise ValueError(f"unknown wall pressure method {method!r}, expected one of {WALL_PRESSURE_METHODS}")
+    if method == "auto":
+        return "cell" if _is_viscous(mesh) else "rizzi"
+    return method
+
+
+def _cell_centroids(nodes):
+    """Centroid of every quadrilateral cell, nodes of shape (nj, ni, 2) -> (nj - 1, ni - 1, 2).
+    Same point as the solver's eval_CellCenterAreas (area-weighted centroid of the cell)."""
+    corners = (nodes[:-1, :-1], nodes[:-1, 1:], nodes[1:, 1:], nodes[1:, :-1])
+    twice_area = np.zeros(corners[0].shape[:-1])
+    moment = np.zeros(corners[0].shape)
+    for a in range(4):
+        p, q = corners[a], corners[(a + 1) % 4]
+        cross = p[..., 0] * q[..., 1] - q[..., 0] * p[..., 1]
+        twice_area += cross
+        moment += (p + q) * cross[..., None]
+    return moment / (3 * twice_area[..., None])
+
+
+def _rizzi_wall_pressure(mesh):
+    """Face pressure of the Euler2D slip wall, P_f = p1 - P_eta / 2, with the solver's formula (CellOps.h,
+    ApplyWallConditions and eval_wall_metrics):
+        P_eta = [(x_eps . x_eta) p_eps + rho1 det(V1, x_eta) det(x_eps_eps, V1)] / |x_eps|^2
+    x_eps, x_eps_eps: central differences of the wall face midpoints; x_eta: from the first ghost centre
+    (mirror of the wall cell centre through the face midpoint) to the wall cell centre; p_eps: central
+    difference of the wall cell pressures. Periodic in i, like the solver: closed O-mesh."""
+    ni, nj, _ = mesh.dimensions
+    nodes = np.asarray(mesh.points, dtype=float).reshape(nj, ni, 3)[:2, :, :2]
+    first_row = lambda name: np.asarray(mesh.cell_data[name], dtype=float).reshape(nj - 1, ni - 1, -1)[0]
+    p1, rho1, v1 = first_row("pressure")[:, 0], first_row("density")[:, 0], first_row("velocity")[:, :2]
+    middle = .5 * (nodes[0, :-1] + nodes[0, 1:])
+    right, left = np.roll(middle, -1, axis=0), np.roll(middle, 1, axis=0)
+    x_eps = .5 * (right - left)
+    x_eps_eps = right - 2 * middle + left
+    x_eta = 2 * (_cell_centroids(nodes)[0] - middle)
+    p_eps = .5 * (np.roll(p1, -1) - np.roll(p1, 1))
+    det = lambda u, v: u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0]
+    p_eta = (np.einsum("ij,ij->i", x_eps, x_eta) * p_eps + rho1 * det(v1, x_eta) * det(x_eps_eps, v1)) / np.einsum("ij,ij->i", x_eps, x_eps)
+    return p1 - .5 * p_eta
+
+
+def wall_pressure(mesh, method="auto"):
     """Pressure on every wall face (j = 0), in the order of the wall cells.
 
-    "cell": the pressure of the first cell, at its centre (first order in the wall distance).
+    "auto": "rizzi" for an inviscid solution, "cell" for a viscous one (the solver's wall flux).
+    "rizzi": the Euler2D wall face pressure P_f = p1 - P_eta / 2 (see _rizzi_wall_pressure).
+    "cell": the pressure of the first cell, at its centre.
     "extrapolated": linear extrapolation to the face along the wall normal from the first two cells,
     p_w = p1 + (p1 - p2) * d1 / (d2 - d1), with d1, d2 their centres' distances to the face line.
     Falls back to "cell" where the mesh has a single row of cells or the two distances are not increasing.
     """
-    if method not in WALL_PRESSURE_METHODS:
-        raise ValueError(f"unknown wall pressure method {method!r}, expected one of {WALL_PRESSURE_METHODS}")
+    method = resolve_wall_pressure_method(mesh, method)
     ni, nj, _ = mesh.dimensions
+    if method == "rizzi":
+        return _rizzi_wall_pressure(mesh)
     pressure = np.asarray(mesh.cell_data["pressure"], dtype=float).reshape(nj - 1, ni - 1)
     if method == "cell" or nj < 3:
         return pressure[0].copy()
@@ -46,10 +100,10 @@ def wall_pressure(mesh, method="cell"):
     return result
 
 
-def aerodynamic_coefficients(mesh, chord_ref=None, x_ref=None, pressure_method="cell"):
+def aerodynamic_coefficients(mesh, chord_ref=None, x_ref=None, pressure_method="auto"):
     """Force coefficients on the wall (j = 0).
 
-    Pressure: wall_pressure(mesh, pressure_method), the first cell's by default. The friction
+    Pressure: wall_pressure(mesh, pressure_method), the solver's wall face pressure by default. The friction
     part is present only when the solution stores a Reynolds number: tau = mu * tangential velocity /
     wall distance, from the first cell centres, with the exported Sutherland viscosity of the first
     cells (the wall ghost cells share their temperature at an adiabatic wall), or the constant
@@ -75,7 +129,7 @@ def aerodynamic_coefficients(mesh, chord_ref=None, x_ref=None, pressure_method="
     row = lambda name: np.asarray(mesh.cell_data[name], dtype=float).reshape(nj - 1, ni - 1, -1)[0]
     pressure_force = (wall_pressure(mesh, pressure_method) - p_inf)[:, None] * normal
     friction_force = np.zeros_like(pressure_force)
-    viscous = bool(np.isfinite(reynolds) and reynolds > 0)
+    viscous = _is_viscous(mesh)
     if viscous:
         distance = np.abs(np.einsum("ij,ij->i", normal, middle - centers))  # Wall distance times face length.
         valid = distance > 0
@@ -106,15 +160,16 @@ def aerodynamic_coefficients(mesh, chord_ref=None, x_ref=None, pressure_method="
     return {"cl": total[0], "cd": total[1], "cm": total[2], "cd_pressure": pressure_part[1], "cd_friction": friction_part[1], "viscous": viscous, "chord": chord}
 
 
-def wall_distribution(mesh, pressure_method="cell"):
+def wall_distribution(mesh, pressure_method="auto"):
     """Wall Cp against x (pressure when the free stream is at rest), from wall_pressure(mesh, pressure_method).
 
-    With "extrapolated", x is the middle of each wall face; with "cell", the first cell centre.
+    With "rizzi" or "extrapolated", x is the middle of each wall face; with "cell", the first cell centre.
     """
     mach, gamma, p_inf = _field(mesh, "mach_inf", 0.0), _field(mesh, "gamma", 1.4), _field(mesh, "pressure_inf", 1.0)
     dynamic_pressure = .5 * gamma * p_inf * mach * mach
     ni, nj, _ = mesh.dimensions
     nodes = np.asarray(mesh.points, dtype=float).reshape(nj, ni, 3)[:2, :, 0]
+    pressure_method = resolve_wall_pressure_method(mesh, pressure_method)
     if pressure_method == "cell":
         x = .25 * (nodes[0, :-1] + nodes[0, 1:] + nodes[1, :-1] + nodes[1, 1:])
     else:

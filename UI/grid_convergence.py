@@ -26,7 +26,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pyvista as pv  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # aero.py, next to this file.
-from aero import WALL_PRESSURE_METHODS, aerodynamic_coefficients, entropy_error, wall_distribution  # noqa: E402
+from aero import WALL_PRESSURE_METHODS, aerodynamic_coefficients, entropy_error, resolve_wall_pressure_method, wall_distribution  # noqa: E402
+
+WALL_PRESSURE_LABELS = {"rizzi": "Rizzi wall face pressure", "cell": "first cell centres", "extrapolated": "extrapolated to the wall"}
 
 
 # Per-mesh coefficients of the paper, keyed by (Mach, alpha in degrees) then NC: (Cl, Cd, Cm).
@@ -259,7 +261,8 @@ def plot_solution(entry, chord_ref, pressure_method, path):
     cp_axis.plot(x_over_c[upper], values[upper], ".", markersize=4, label="upper surface")
     cp_axis.plot(x_over_c[~upper], values[~upper], "o", markersize=4, markerfacecolor="none", markeredgewidth=.7, label="lower surface")
     cp_axis.invert_yaxis()
-    cp_axis.set(xlabel="x / c", ylabel="Cp" if name == "cp" else "p", title=f"Wall {'Cp' if name == 'cp' else 'pressure'} ({'extrapolated to the wall' if pressure_method == 'extrapolated' else 'first cell centres'})")
+    method_label = WALL_PRESSURE_LABELS[resolve_wall_pressure_method(mesh, pressure_method)]
+    cp_axis.set(xlabel="x / c", ylabel="Cp" if name == "cp" else "p", title=f"Wall {'Cp' if name == 'cp' else 'pressure'} ({method_label})")
     cp_axis.grid(True, alpha=.3)
     cp_axis.legend(loc="lower right")
     text = (f"MACH {entry['mach_inf']:.3f}   ALPHA {entry['alpha_deg']:.7f}\n"
@@ -293,7 +296,7 @@ def main(argv=None):
     parser.add_argument("--chord-ref", type=float, default=1.0, help="reference chord (paper: 1)")
     parser.add_argument("--x-ref", type=float, default=0.25, help="moment centre x (paper: 0.25)")
     parser.add_argument("--exclude-radius", type=float, default=0.05, help="entropy error also computed without the cells this close to the trailing edge (0: off)")
-    parser.add_argument("--wall-pressure", default="cell", choices=WALL_PRESSURE_METHODS, help="wall pressure for Cp and the coefficients: the first cell (consistent with the solver's slip wall), or extrapolated from the first two cells")
+    parser.add_argument("--wall-pressure", default="auto", choices=WALL_PRESSURE_METHODS, help="wall pressure for Cp and the coefficients: auto = the solver's wall face pressure (rizzi for Euler2D, cell for RANS2D); rizzi = P_f = p1 - P_eta/2; cell = first cell; extrapolated = linear from the first two cells")
     parser.add_argument("--format", default="png", choices=("png", "pdf", "svg"), help="figure format")
     parser.add_argument("--output", type=Path, help="output directory (default: <study>/post)")
     args = parser.parse_args(argv)
