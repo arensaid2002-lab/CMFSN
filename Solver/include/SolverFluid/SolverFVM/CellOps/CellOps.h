@@ -30,7 +30,13 @@ namespace Solver::CellOps
         #pragma region Geometrical Data Fields
         NormalUnitVector,
         EdgeLength,
-        CellCenter
+        CellCenter,
+        #pragma region Wall Metrics
+        // Stored once per wall column: any k of that column returns the same values.
+        Wall_xy_epsilon,
+        Wall_xy_epsilon_epsilon,
+        Wall_xy_eta
+        #pragma endregion
         #pragma endregion
     };
 
@@ -84,6 +90,24 @@ namespace Solver::CellOps
                 Kokkos::Array<T, 2> CellCenter = { cellsdata.Cell_Centers(k, 0), cellsdata.Cell_Centers(k, 1) };
                 return CellCenter;
             }
+            else if constexpr (Fields == DataFields::Wall_xy_epsilon)
+            {
+                const int i_cell = k % cellsdata.Ni_total_cells;
+                Kokkos::Array<T, 2> xy_epsilon = { cellsdata.Wall_Metrics(i_cell, 0), cellsdata.Wall_Metrics(i_cell, 1) };
+                return xy_epsilon;
+            }
+            else if constexpr (Fields == DataFields::Wall_xy_epsilon_epsilon)
+            {
+                const int i_cell = k % cellsdata.Ni_total_cells;
+                Kokkos::Array<T, 2> xy_epsilon_epsilon = { cellsdata.Wall_Metrics(i_cell, 2), cellsdata.Wall_Metrics(i_cell, 3) };
+                return xy_epsilon_epsilon;
+            }
+            else if constexpr (Fields == DataFields::Wall_xy_eta)
+            {
+                const int i_cell = k % cellsdata.Ni_total_cells;
+                Kokkos::Array<T, 2> xy_eta = { cellsdata.Wall_Metrics(i_cell, 4), cellsdata.Wall_Metrics(i_cell, 5) };
+                return xy_eta;
+            }
             else if constexpr (Fields == DataFields::Fluxes)
             {               
                 Kokkos::Array<T, 4> Fluxes = { cellsdata.Flux_mass(k, direction), cellsdata.Flux_Momentum_u(k, direction), cellsdata.Flux_Momentum_v(k, direction), cellsdata.Flux_E(k, direction) };
@@ -101,7 +125,7 @@ namespace Solver::CellOps
             }
             else
             {
-                static_assert(Fields == DataFields::EdgeLength || Fields == DataFields::Velocity || Fields == DataFields::Temperature || Fields == DataFields::NormalUnitVector || Fields == DataFields::CellCenter || Fields == DataFields::Fluxes || Fields == DataFields::Dissipation_History || Fields == DataFields::Conservative_Old, "Invalid data field specified");
+                static_assert(Fields == DataFields::EdgeLength || Fields == DataFields::Velocity || Fields == DataFields::Temperature || Fields == DataFields::NormalUnitVector || Fields == DataFields::CellCenter || Fields == DataFields::Fluxes || Fields == DataFields::Dissipation_History || Fields == DataFields::Conservative_Old || Fields == DataFields::Wall_xy_epsilon || Fields == DataFields::Wall_xy_epsilon_epsilon || Fields == DataFields::Wall_xy_eta, "Invalid data field specified");
             }
         }
         
@@ -129,6 +153,24 @@ namespace Solver::CellOps
                 cellsdata.Normals(k, direction, 0) = data[0];
                 cellsdata.Normals(k, direction, 1) = data[1];
             }
+            else if constexpr (Fields == DataFields::Wall_xy_epsilon && std::is_same_v<InsertData, Kokkos::Array<T, 2>>)
+            {
+                const int i_cell = k % cellsdata.Ni_total_cells;
+                cellsdata.Wall_Metrics(i_cell, 0) = data[0];
+                cellsdata.Wall_Metrics(i_cell, 1) = data[1];
+            }
+            else if constexpr (Fields == DataFields::Wall_xy_epsilon_epsilon && std::is_same_v<InsertData, Kokkos::Array<T, 2>>)
+            {
+                const int i_cell = k % cellsdata.Ni_total_cells;
+                cellsdata.Wall_Metrics(i_cell, 2) = data[0];
+                cellsdata.Wall_Metrics(i_cell, 3) = data[1];
+            }
+            else if constexpr (Fields == DataFields::Wall_xy_eta && std::is_same_v<InsertData, Kokkos::Array<T, 2>>)
+            {
+                const int i_cell = k % cellsdata.Ni_total_cells;
+                cellsdata.Wall_Metrics(i_cell, 4) = data[0];
+                cellsdata.Wall_Metrics(i_cell, 5) = data[1];
+            }
             else if constexpr (Fields == DataFields::Fluxes && std::is_same_v<InsertData, Kokkos::Array<T, 4>>)
             {
                 cellsdata.Flux_mass(k, direction) = data[0];
@@ -138,7 +180,7 @@ namespace Solver::CellOps
             }
             else
             {
-                static_assert((Fields == DataFields::EdgeLength && std::is_arithmetic_v<InsertData>) || (Fields == DataFields::NormalUnitVector && std::is_same_v<InsertData, Kokkos::Array<T, 2>>) || (Fields == DataFields::Fluxes && std::is_same_v<InsertData, Kokkos::Array<T, 4>>), "This overload accepts face geometry or precomputed fluxes only");
+                static_assert((Fields == DataFields::EdgeLength && std::is_arithmetic_v<InsertData>) || (Fields == DataFields::NormalUnitVector && std::is_same_v<InsertData, Kokkos::Array<T, 2>>) || (Fields == DataFields::Fluxes && std::is_same_v<InsertData, Kokkos::Array<T, 4>>) || (Fields == DataFields::Wall_xy_epsilon && std::is_same_v<InsertData, Kokkos::Array<T, 2>>) || (Fields == DataFields::Wall_xy_epsilon_epsilon && std::is_same_v<InsertData, Kokkos::Array<T, 2>>) || (Fields == DataFields::Wall_xy_eta && std::is_same_v<InsertData, Kokkos::Array<T, 2>>), "This overload accepts face geometry, wall metrics or precomputed fluxes only");
             }
         }
         
@@ -233,16 +275,17 @@ namespace Solver::CellOps
         KOKKOS_INLINE_FUNCTION
         void Update_DataField(const CellsData<T>& cellsdata, int k_cell, int direction)
         {
-            static_assert(Fields == DataFields::Fluxes, "This overload computes fluxes from the current conservative state");
+            static_assert(Fields == DataFields::Fluxes, "This overload computes fluxes from the current conservative state");     
             auto velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_cell);
             auto normal = extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_cell, direction);
             auto Conservative_state = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_cell);
             T Pressure = cellsdata.Pressure(k_cell);
             T Vn = dot(velocity, normal);
-
+            
             Kokkos::Array<T, 4> Pressure_Energy = { 0, normal[0] * Pressure, normal[1] * Pressure, Pressure * Vn };
             auto flux = Conservative_state * Vn + Pressure_Energy;
             Update_DataField<T, DataFields::Fluxes>(flux, cellsdata, k_cell, direction);
+            
         }
 
         template <typename ExecSpace, CellCopyFields Fields = CellCopyFields::All, typename T>
@@ -294,7 +337,7 @@ namespace Solver::CellOps
         }
 
         template<typename ExecSpace, typename T, SolverTypes SType = SolverTypes::Euler2D, BoundaryCondition BType = BoundaryCondition::AdiabaticWall>
-        void ApplyWallConditions(const CellsData<T>& cellsdata, const initialization_data<T>& init_data, T Wall_temp = T{1})
+        void ApplyWallConditions(const CellsData<T>& cellsdata, const initialization_data<T>& init_data)
         {
             Kokkos::parallel_for("WallConditions", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.Ni_physical_cells * cellsdata.N_ghost_layers), KOKKOS_LAMBDA(int k_g)
             {
@@ -311,12 +354,32 @@ namespace Solver::CellOps
                 auto ghost_normal = -1 * extract_DataField<T, DataFields::NormalUnitVector>(cellsdata, k_wall, 0);
                 auto RealCell_velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_source);
                 auto Ghost_State = extract_DataField<T, DataFields::Conservative_Old>(cellsdata, k_source);
+                
                 Kokkos::Array<T, 2> GhostCell_velocity;
-                const T wall_temperature = Wall_temp;
+                
                 const T gamma = init_data.gamma;
+                
+                Kokkos::Array<T, 4> Ghost_Flux;
                 if constexpr (SType == SolverTypes::Euler2D)
                 {
+                    auto xy_epsilon = extract_DataField<T, DataFields::Wall_xy_epsilon>(cellsdata, k_wall);
+                    auto xy_epsilon_epsilon = extract_DataField<T, DataFields::Wall_xy_epsilon_epsilon>(cellsdata, k_wall);
+                    auto xy_eta = extract_DataField<T, DataFields::Wall_xy_eta>(cellsdata, k_wall);
+                    auto wall_velocity = extract_DataField<T, DataFields::Velocity>(cellsdata, k_wall);
+                    T P_epsilon = (cellsdata.Pressure(Cell_index((i_g + 1)%cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers, cellsdata.N_ghost_layers, row_stride)) - cellsdata.Pressure(Cell_index((i_g - 1 + cellsdata.Ni_physical_cells)%cellsdata.Ni_physical_cells + cellsdata.N_ghost_layers, cellsdata.N_ghost_layers, row_stride)))/2;
+                    T P_eta = (dot(xy_epsilon, xy_eta)*P_epsilon + cellsdata.rho_old(k_wall)*(det2D(wall_velocity, xy_eta)*det2D(xy_epsilon_epsilon, wall_velocity)))/dot(xy_epsilon, xy_epsilon);
+                    
+                    // compute ghost pressure
+                    cellsdata.Pressure(k_ghost) = cellsdata.Pressure(k_source) - (2*cellsdata.N_ghost_layers - 1 - 2*j_g)*P_eta;
+                    T P_f =  cellsdata.Pressure(k_wall) - T(0.5)*P_eta;
+                    
                     GhostCell_velocity = RealCell_velocity - (T)2 * dot(RealCell_velocity, ghost_normal) * ghost_normal;
+                    Ghost_State[0] = cellsdata.rho_old(k_source)*Kokkos::pow(cellsdata.Pressure(k_ghost)/cellsdata.Pressure(k_source), 1/gamma);
+                    Ghost_State[1] = Ghost_State[0] * GhostCell_velocity[0];
+                    Ghost_State[2] = Ghost_State[0] * GhostCell_velocity[1];
+                    Ghost_State[3] = eval_Energy<T>(Ghost_State[0], GhostCell_velocity[0], GhostCell_velocity[1], cellsdata.Pressure(k_ghost), gamma);
+                    
+                    Ghost_Flux = {0, P_f*ghost_normal[0], P_f*ghost_normal[1], 0};
                 }
                 if constexpr (SType == SolverTypes::RANS2D)
                 {
@@ -324,22 +387,29 @@ namespace Solver::CellOps
                     if constexpr (BType == BoundaryCondition::AdiabaticWall)
                     {
                         GhostCell_velocity = -1 * RealCell_velocity;
-                    }
-                    else if constexpr (BType == BoundaryCondition::isothermalWall)
-                    {
-                        GhostCell_velocity = -1 * RealCell_velocity;
-                        const T Ghost_temperature = T{2} * wall_temperature - extract_DataField<T, DataFields::Temperature>(cellsdata, k_source);
-                        Ghost_State[0] = cellsdata.Pressure(k_source) / Ghost_temperature;
-                        Ghost_State[3] = eval_Energy<T>(Ghost_State[0], GhostCell_velocity[0], GhostCell_velocity[1], cellsdata.Pressure(k_source), gamma);
+                        Ghost_State[1] = Ghost_State[0] * GhostCell_velocity[0];
+                        Ghost_State[2] = Ghost_State[0] * GhostCell_velocity[1];
+
                     }
                 }
-                Ghost_State[1] = Ghost_State[0] * GhostCell_velocity[0];
-                Ghost_State[2] = Ghost_State[0] * GhostCell_velocity[1];
                 const T EdgeLength = extract_DataField<T, DataFields::EdgeLength>(cellsdata, k_wall, 0);
+
                 Update_DataField<T, DataFields::NormalUnitVector>(ghost_normal, cellsdata, k_ghost, 2);
                 Update_DataField<T, DataFields::EdgeLength>(EdgeLength, cellsdata, k_ghost, 2);
                 Update_DataField<T, DataFields::Conservative_Old>(Ghost_State, cellsdata, init_data, k_ghost, 2);
-                Update_DataField<T, DataFields::Fluxes>(cellsdata, k_ghost, 2);
+                if (j_g == cellsdata.N_ghost_layers-1)
+                {
+                    if constexpr (SType == SolverTypes::Euler2D)
+                    {
+                        Update_DataField<T, DataFields::Fluxes>(Ghost_Flux, cellsdata, k_ghost, 2);
+                        Update_DataField<T, DataFields::Fluxes>(-1*Ghost_Flux, cellsdata, k_wall, 0);
+                    }
+                    else if constexpr (SType == SolverTypes::RANS2D)
+                    {
+                        Update_DataField<T, DataFields::Fluxes>(cellsdata, k_ghost, 2);
+                    }
+
+                }
             });
         }
         
@@ -380,8 +450,8 @@ namespace Solver::CellOps
                 }
                 else if (Mach < 1)
                 {
-                    T J_plus = Vn_in + 2 * c_in / (init_data.gamma - 1.0);
-                    T J_minus = Vn_inf - 2 * c_inf / (init_data.gamma - 1.0);
+                    T J_plus = Vn_in + 2 * c_in / (init_data.gamma - T{1});
+                    T J_minus = Vn_inf - 2 * c_inf / (init_data.gamma - T{1});
                     T Vbn = (J_plus + J_minus) / T{ 2 };
                     T cb = (gamma - T{ 1 }) / T{ 4 } * (J_plus - J_minus);
 
@@ -423,10 +493,7 @@ namespace Solver::CellOps
         template <typename ExecSpace, typename T, SolverTypes SType = SolverTypes::Euler2D>
         void ApplyBoundaryConditions(const CellsData<T>& cellsdata, const initialization_data<T>& init_data)
         {
-            if (init_data.wall_condition == BoundaryCondition::isothermalWall)
-                ApplyWallConditions<ExecSpace, T, SType, BoundaryCondition::isothermalWall>(cellsdata, init_data, init_data.wall_temperature);
-            else
-                ApplyWallConditions<ExecSpace, T, SType, BoundaryCondition::AdiabaticWall>(cellsdata, init_data, init_data.wall_temperature);
+            ApplyWallConditions<ExecSpace, T, SType, BoundaryCondition::AdiabaticWall>(cellsdata, init_data);
             ApplyRiemanInvariantConditions<ExecSpace>(cellsdata, init_data);
             ApplyPeriodicity<ExecSpace>(cellsdata);
         }
@@ -535,6 +602,16 @@ namespace Solver::CellOps
             return CellCenterAreas;
         }
 
+        // Midpoint of the wall face i_face (row j = 0 of the mesh nodes).
+        template <typename T>
+        KOKKOS_INLINE_FUNCTION
+        Kokkos::Array<T, 2> eval_WallFaceMidpoint(int i_face, const MeshData_Structured<T>& meshdata)
+        {
+            const Kokkos::Array<T, 2> P_1 = { meshdata.X(Node_index(i_face, 0, meshdata.Ni)), meshdata.Y(Node_index(i_face, 0, meshdata.Ni)) };
+            const Kokkos::Array<T, 2> P_2 = { meshdata.X(Node_index(i_face + 1, 0, meshdata.Ni)), meshdata.Y(Node_index(i_face + 1, 0, meshdata.Ni)) };
+            return mean<T>(P_1, P_2);
+        }
+
         template <typename ExecSpace, typename T>
         void eval_GeometricalData(const CellsData<T>& cellsdata, const MeshData_Structured<T>& meshdata)
         {
@@ -604,8 +681,6 @@ namespace Solver::CellOps
                 int k_ghost = k_Farfield + (cellsdata.N_ghost_layers- 1 - j_mesh) * row_stride;
                 
 
-
-
                 Kokkos::Array<T, 2> P_reference = { meshdata.X(k_Farfirld_node), meshdata.Y(k_Farfirld_node) };
                 Kokkos::Array<T, 2> P_F1 = { meshdata.X(k_Farfirld_node + 1), meshdata.Y(k_Farfirld_node + 1) };
                 auto P_Cf_relative = (P_F1 - P_reference) / T{ 2 };
@@ -646,6 +721,23 @@ namespace Solver::CellOps
                     cellsdata.DJacobien(k_wall_ghost, 2, component) = DJacobien_wall[component];
                     cellsdata.DJacobien(k_farfield_ghost, 0, component) = DJacobien_farfield[component];
                 }
+            });
+            // Wall metrics for the Rizzi wall pressure: x_eps and x_eps_eps by central differences of the
+            // wall face midpoints (periodic in i, like ApplyPeriodicity), x_eta from the adjacent ghost center
+            // to the wall cell center (one eta step).
+            Kokkos::parallel_for("eval_wall_metrics", Kokkos::RangePolicy<ExecSpace>(0, cellsdata.Ni_physical_cells), KOKKOS_LAMBDA(int i_mesh)
+            {
+                const int N_wall_faces = cellsdata.Ni_physical_cells;
+                const int k_wall = Cell_index(i_mesh + cellsdata.N_ghost_layers, cellsdata.N_ghost_layers, cellsdata.Ni_total_cells);
+                const auto P_f  = eval_WallFaceMidpoint(i_mesh, meshdata);
+                const auto P_fL = eval_WallFaceMidpoint((i_mesh - 1 + N_wall_faces) % N_wall_faces, meshdata);
+                const auto P_fR = eval_WallFaceMidpoint((i_mesh + 1) % N_wall_faces, meshdata);
+                const auto xy_epsilon = (P_fR - P_fL) / T{ 2 };
+                const auto xy_epsilon_epsilon = P_fR - T{ 2 } * P_f + P_fL;
+                const auto xy_eta = extract_DataField<T, DataFields::CellCenter>(cellsdata, k_wall) - extract_DataField<T, DataFields::CellCenter>(cellsdata, k_wall - cellsdata.Ni_total_cells);
+                Update_DataField<T, DataFields::Wall_xy_epsilon>(xy_epsilon, cellsdata, k_wall, 0);
+                Update_DataField<T, DataFields::Wall_xy_epsilon_epsilon>(xy_epsilon_epsilon, cellsdata, k_wall, 0);
+                Update_DataField<T, DataFields::Wall_xy_eta>(xy_eta, cellsdata, k_wall, 0);
             });
         }
 
@@ -771,6 +863,7 @@ namespace Solver::CellOps
                           break;
                     case 3: return Kokkos::Array<int, 6>{k_cell + 2,k_cell + 1, k_cell, k_cell - 1, k_cell - 2, k_cell - 3};
                           break;
+                    default: return Kokkos::Array<int, 6>{}; // invalid direction
                     }
                 };
             Kokkos::Array<int, 6> k_Dissipation = k_dissipations(direction, row_stride, k_cell);

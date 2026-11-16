@@ -204,6 +204,16 @@ namespace Solver::NumOps
         
         return det2D;
     }
+    template <typename T>
+    KOKKOS_INLINE_FUNCTION
+    T Norm(const Kokkos::Array<T, 2>& A)
+    {
+        T norm = Kokkos::sqrt(A[0]*A[0] + A[1]*A[1]);
+
+        return norm;
+    }
+    
+    
     #pragma endregion
 
 }

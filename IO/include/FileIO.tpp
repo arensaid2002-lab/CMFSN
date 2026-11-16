@@ -25,13 +25,13 @@ using namespace Mesh;
 
 namespace IO
 {
-    inline std::filesystem::path Create_RunDirectory(const std::filesystem::path& root)
+    inline std::filesystem::path Create_RunDirectory(const std::filesystem::path& root, const std::string& prefix)
     {
         std::filesystem::create_directories(root);
         for (unsigned long long run = 1; ; ++run)
         {
             std::ostringstream name;
-            name << "run_" << std::setfill('0') << std::setw(4) << run;
+            name << prefix << std::setfill('0') << std::setw(4) << run;
             const auto directory = root / name.str();
             std::error_code error;
             if (std::filesystem::create_directory(directory, error))

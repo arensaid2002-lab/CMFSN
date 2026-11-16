@@ -35,3 +35,8 @@
   before doing anything.
 - When you don't know something, say "I don't know" instead of guessing. Say which
   claims you checked (file, line, output, source) and which ones you only inferred.
+
+## Review
+- When you point out an error (review, build, test), always give its exact
+  location: file and line (as a clickable link), plus the variable, expression
+  or function involved. Never just say that there is an error.

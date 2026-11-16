@@ -36,6 +36,7 @@ namespace Solver
             Normals     = View3D<T>("Normals", N_total_cells, meshdata.N_faces, 3); // {nx, ny, norm}
             Cell_Areas  = View1D<T>("Cell_Areas", N_total_cells);
 			Cell_Centers = View2D<T>("Cell_Centers", N_total_cells, 2); // {x, y}
+            Wall_Metrics = View2D<T>("Wall_Metrics", Ni_total_cells, 6); // per wall column i_cell: {x_eps, y_eps, x_eps_eps, y_eps_eps, x_eta, y_eta}
             Time_Step = View1D<T>("Time_Step", N_total_cells);
              
             
@@ -82,7 +83,8 @@ namespace Solver
         View1D<T> rho_0, Momentum_u_0, Momentum_v_0, Energy_0;
         View2D<T> D_history, Node_data; // Retained RK contribution per cell, not per face.
         View2D<T> Cell_Centers, Flux_mass, Flux_Momentum_u, Flux_Momentum_v, Flux_E, Lambdas;
-        View3D<T> Normals, DJacobien; 
+        View3D<T> Normals, DJacobien;
+        View2D<T> Wall_Metrics; // Wall row only, indexed by the column i_cell (Rizzi wall pressure).
         int Ni_physical_cells, Nj_physical_cells;
         int Ni_nodes, Nj_nodes, N_faces, N_physical_cells;
         int N_total_cells, Ni_total_cells, Nj_total_cells;
@@ -94,7 +96,6 @@ namespace Solver
         T Mach_inf = T{0}, gamma = T(1.4), alpha = T{0}; // alpha is in radians.
         T Re_inf = std::numeric_limits<T>::infinity(), Pr_inf = T{1}; // Only used by the viscous solver.
         BoundaryCondition wall_condition = BoundaryCondition::AdiabaticWall;
-        T wall_temperature = T{1}; // Same nondimensional temperature convention as p/rho.
         T T_inf = T{288.15};
     };
 

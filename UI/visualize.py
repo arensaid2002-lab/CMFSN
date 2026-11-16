@@ -1,7 +1,7 @@
 """Inspect CMFSN structured-grid exports without interpolating cell values.
 
 Install: python -m pip install -r UI/requirements.txt
-Latest:  python UI/visualize.py                 (most recent results/run_*/solution)
+Latest:  python UI/visualize.py                 (most recent results/run_*/solution or results/study_*/*/solution)
 Series:  python UI/visualize.py results/run_0001/solution.pvd
 Single:  python UI/visualize.py results/run_0001/solution.vts
 Zoom:    python UI/visualize.py results/run_0001/solution.vts --bounds -0.25 1.25 -0.75 0.75
@@ -24,6 +24,9 @@ import sys
 
 import numpy as np
 import pyvista as pv
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # aero.py, next to this file.
+from aero import aerodynamic_coefficients, wall_distribution  # noqa: E402
 
 
 FIELDS = {
@@ -149,7 +152,7 @@ def prepare_solution(mesh) -> pv.StructuredGrid:
 def latest_solution(roots=None):
     """Most recently written run, searched from the working directory and the repository."""
     roots = roots or (Path.cwd(), Path(__file__).resolve().parent.parent)
-    patterns = ("results/run_*/solution.*", "build/*/results/run_*/solution.*", "out/build/*/results/run_*/solution.*")
+    patterns = tuple(f"{prefix}results/{run}/solution.*" for prefix in ("", "build/*/", "out/build/*/") for run in ("run_*", "study_*/*"))
     found = {path.resolve() for root in roots for pattern in patterns for path in Path(root).glob(pattern) if path.suffix.lower() in (".pvd", ".vts")}
     return max(found, key=lambda path: path.stat().st_mtime, default=None)
 
@@ -162,72 +165,6 @@ def flow_summary(mesh) -> str:
     if "alpha_rad" in mesh.field_data:
         parts.append(f"α = {np.degrees(float(mesh.field_data['alpha_rad'][0])):.4g}°")
     return " · ".join(parts)
-
-
-def aerodynamic_coefficients(mesh):
-    """Force coefficients on the wall (j = 0), integrated from the row of cells touching it.
-
-    Pressure and velocity are taken at the first cell centres. The friction part is present only
-    when the solution stores a Reynolds number: tau = mu * tangential velocity / wall distance,
-    with the exported Sutherland viscosity of the first cells (the wall ghost cells share their
-    temperature at an adiabatic wall), or the constant mu_inf = M_inf * sqrt(gamma) / Re for files
-    written before the viscosity was exported. Reference length: the chord (x extent of the
-    wall). Cm is about the quarter chord, positive nose-up. Returns None for a free stream at rest.
-    """
-    data = mesh.field_data
-    value = lambda name, default: float(data[name][0]) if name in data else default
-    mach, gamma, alpha = value("mach_inf", 0.0), value("gamma", 1.4), value("alpha_rad", 0.0)
-    rho_inf, p_inf, reynolds = value("rho_inf", 1.0), value("pressure_inf", 1.0), value("reynolds_inf", np.inf)
-    dynamic_pressure = .5 * gamma * p_inf * mach * mach
-    ni, nj, _ = mesh.dimensions
-    if not dynamic_pressure > 0 or ni < 2 or nj < 2:
-        return None
-    points = np.asarray(mesh.points, dtype=float).reshape(nj, ni, 3)[:2, :, :2]
-    middle = .5 * (points[0, :-1] + points[0, 1:])
-    centers = .25 * (points[0, :-1] + points[0, 1:] + points[1, :-1] + points[1, 1:])
-    edge = points[0, 1:] - points[0, :-1]
-    length = np.linalg.norm(edge, axis=1)
-    normal = np.column_stack([edge[:, 1], -edge[:, 0]])  # Scaled by the face length.
-    normal *= np.sign(np.einsum("ij,ij->i", normal, middle - centers))[:, None]  # From the fluid into the body.
-    row = lambda name: np.asarray(mesh.cell_data[name], dtype=float).reshape(nj - 1, ni - 1, -1)[0]
-    pressure_force = (row("pressure")[:, 0] - p_inf)[:, None] * normal
-    friction_force = np.zeros_like(pressure_force)
-    viscous = bool(np.isfinite(reynolds) and reynolds > 0)
-    if viscous:
-        distance = np.abs(np.einsum("ij,ij->i", normal, middle - centers))  # Wall distance times face length.
-        valid = distance > 0
-        unit = normal[valid] / length[valid, None]
-        velocity = row("velocity")[valid, :2]
-        tangential = velocity - np.einsum("ij,ij->i", velocity, unit)[:, None] * unit
-        if "viscosity" in mesh.cell_data:
-            viscosity = row("viscosity")[valid, 0]
-        else:
-            viscosity = np.full(int(valid.sum()), rho_inf * mach * np.sqrt(gamma * p_inf / rho_inf) / reynolds)
-        friction_force[valid] = viscosity[:, None] * tangential * (length[valid] ** 2 / distance[valid])[:, None]
-    wall_x = points[0, :, 0]
-    chord = float(np.ptp(wall_x))
-    if not chord > 0:
-        return None
-    origin = np.array([wall_x.min() + .25 * chord, points[0, np.argmin(wall_x), 1]])
-    lever = middle - origin
-
-    def coefficients(force):
-        fx, fy = np.nansum(force, axis=0) / (dynamic_pressure * chord)
-        moment = -np.nansum(lever[:, 0] * force[:, 1] - lever[:, 1] * force[:, 0]) / (dynamic_pressure * chord * chord)
-        return np.array([-fx * np.sin(alpha) + fy * np.cos(alpha), fx * np.cos(alpha) + fy * np.sin(alpha), moment])
-
-    pressure_part, friction_part = coefficients(pressure_force), coefficients(friction_force)
-    total = pressure_part + friction_part
-    return {"cl": total[0], "cd": total[1], "cm": total[2], "cd_pressure": pressure_part[1], "cd_friction": friction_part[1], "viscous": viscous, "chord": chord}
-
-
-def wall_distribution(mesh):
-    """Cp (pressure when Cp is absent) in the row of cells touching the wall (j = 0), against x."""
-    name = "cp" if "cp" in mesh.cell_data else "pressure"
-    ni, nj, _ = mesh.dimensions
-    x = np.asarray(mesh.points).reshape(nj, ni, 3)[:2, :, 0]
-    centers = .25 * (x[0, :-1] + x[0, 1:] + x[1, :-1] + x[1, 1:])
-    return name, centers, np.asarray(mesh.cell_data[name]).reshape(nj - 1, ni - 1)[0]
 
 
 def load_solution(path: Path) -> pv.StructuredGrid:

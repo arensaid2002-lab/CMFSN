@@ -23,6 +23,5 @@ namespace Solver
     enum class BoundaryCondition
     {
 		AdiabaticWall,
-		isothermalWall,
     };
 }

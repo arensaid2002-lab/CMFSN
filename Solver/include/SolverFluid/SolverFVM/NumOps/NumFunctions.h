@@ -9,16 +9,16 @@ namespace Solver::NumOps
 	KOKKOS_INLINE_FUNCTION
 	T eval_pressure(T rho, T rhoE, T u, T v, T gamma)
 	{
-		T kinetic_energy = 0.5 * rho * (u * u + v * v);
-		T pressure = (gamma - 1.0) *(rhoE - kinetic_energy);
+		T kinetic_energy = T(0.5) * rho * (u * u + v * v);
+		T pressure = (gamma - T{1}) *(rhoE - kinetic_energy);
 		return pressure;
 	}
 	template <typename T>
 	KOKKOS_INLINE_FUNCTION
 	T eval_Energy(T rho, T u, T v, T P, T gamma)
 	{
-		T kinetic_energy = 0.5 * rho * (u * u + v * v);
-		T energy = P / (gamma - 1.0) + kinetic_energy;
+		T kinetic_energy = T(0.5) * rho * (u * u + v * v);
+		T energy = P / (gamma - T{1}) + kinetic_energy;
 		return energy;
 	}
 	template <typename T>
@@ -69,7 +69,7 @@ namespace Solver::NumOps
 	Kokkos::Array<T, N> mean(const Kokkos::Array<T, N>& A, const Kokkos::Array<T, N>& B)
 	{
 		Kokkos::Array<T, N> mean;
-		mean = 0.5 * (A + B);
+		mean = T(0.5) * (A + B);
 		return mean;
 	}
 	template <typename T, size_t N>

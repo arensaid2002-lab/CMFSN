@@ -29,7 +29,7 @@ ctest --preset cuda -L double
 Les 32 tests couvrent l'indexation, la thermodynamique, la geometrie et les
 metriques des quatre faces, les gradients de champs affines sur deux grilles,
 les contraintes visqueuses, la periodicite et ses coins, les etats de paroi
-adiabatique/isotherme, les quatre regimes du
+adiabatique, les quatre regimes du
 farfield, la conservation des faces interieures, le pas de temps et les
 constructeurs. Deux essais courts verifient l'avancement instationnaire
 Jameson et Carpenter-Kennedy. Un export VTS verifie les indices et les valeurs
@@ -52,17 +52,12 @@ Solver::FlowConditions<T> flow;
 flow.Mach_inf = Mach;
 flow.Re_inf = Re;
 flow.Pr_inf = Pr;
-flow.wall_condition = Solver::BoundaryCondition::isothermalWall;
-flow.wall_temperature = wall_temperature;
+flow.wall_condition = Solver::BoundaryCondition::AdiabaticWall;
 Solver::SolverFVM<T, Solver::SolverTypes::RANS2D, TimeScheme, RKScheme> solver(flow, mesh);
 ```
 
 La temperature utilise la convention adimensionnelle `theta = p/rho`, avec
 `theta_inf = 1`. Ce parametre n'est pas automatiquement en kelvins.
-La temperature fantome est `2*theta_wall - theta_inside` pour le prolongement
-symetrique utilise ici. Elle doit rester positive ; ce traitement ne contient
-pas de limiteur de positivite et ne garantit pas l'ordre deux de la fermeture
-de paroi sur toute grille deformee.
 
 Le nom historique `RANS2D` active actuellement les flux laminaires a viscosite
 constante. Aucune equation de turbulence Spalart-Allmaras ou SST n'est ajoutee.
@@ -75,8 +70,8 @@ les arguments de ligne de commande.
 Le lancement utilise exclusivement les valeurs du main. En mode visqueux,
 Reynolds et Prandtl doivent etre positifs et finis. La valeur infinie de
 Reynolds conserve l'ancien defaut Euler ; il faut la remplacer par la valeur
-du cas laminaire. Le selecteur `wall_condition` choisit le type de paroi et
-`wall_temperature` donne sa temperature adimensionnelle si elle est isotherme.
+du cas laminaire. Le selecteur `wall_condition` choisit le type de paroi ;
+seule la paroi adiabatique est disponible.
 
 ## Dimensions
 
@@ -111,8 +106,7 @@ la grille de test n'est pas periodique.
 `geometry` verifie en plus les metriques (`DJacobien`) de la face commune dans
 les rangees fantomes adjacentes a la paroi et au champ lointain, sur grille
 droite et courbe, contre une reference reconstruite depuis les centres. Elles
-sont calculees une seule fois par `eval_GeometricalData`. Le cas isotherme n'a
-pas ete modifie ; il sera revu plus tard.
+sont calculees une seule fois par `eval_GeometricalData`.
 
 `rk_jameson` et `rk_ck` empoisonnent `D_history` avec des NaN entre deux pas :
 rien ne doit fuir d'un pas au suivant. `rk_ck` compare aussi l'increment d'un

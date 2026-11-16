@@ -1,5 +1,6 @@
 #include "FVMTestSupport.h"
 #include "FileIO.h"
+#include "RunSimulation.h"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -7,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <numbers>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -58,6 +60,57 @@ template<typename T> void ghost_metrics(const Fixture<T>& f,int j,int d,const st
             near(metrics(k,d,c),double(ref[c]),tolerance<T>(),message);
             near(metrics(k,d,c)+metrics(other,(d+2)%4,c),0,tolerance<T>(),message+" (opposite of the physical cell)");
         }
+    }
+}
+// Closed O-mesh around a circular wall of radius R (node ni coincides with node 0, periodic in i).
+// i runs clockwise so that the cells have a positive area, like make_mesh.
+template<typename T> Mesh::MeshData_Structured<T> make_circle_mesh(int ni,int nj,double R,double dr)
+{
+    Mesh::MeshData_Structured<T> mesh;
+    mesh.Ni=ni+1;mesh.Nj=nj+1;mesh.N_nodes=(ni+1)*(nj+1);mesh.N_Cells=ni*nj;
+    Kokkos::View<T*> x("circle_x",mesh.N_nodes),y("circle_y",mesh.N_nodes);
+    auto hx=Kokkos::create_mirror_view(x),hy=Kokkos::create_mirror_view(y);
+    const double step=-2*std::numbers::pi/ni;
+    for(int j=0;j<=nj;++j) for(int i=0;i<=ni;++i)
+    {
+        const int k=i+(ni+1)*j;const double theta=step*(i%ni),r=R+dr*j;
+        hx(k)=T(r*std::cos(theta));hy(k)=T(r*std::sin(theta));
+    }
+    Kokkos::deep_copy(x,hx);Kokkos::deep_copy(y,hy);mesh.X=x;mesh.Y=y;
+    return mesh;
+}
+// Wall metrics on a circular wall: x_eps is tangent, x_eps_eps points to the centre (periodic wrap included),
+// x_eta joins the adjacent ghost centre to the wall cell centre and is normal to the wall, pointing outwards.
+template<typename T> void wall_metrics()
+{
+    const int ni=16,nj=4;const double R=1,dr=.1,step=-2*std::numbers::pi/ni;
+    const auto mesh=make_circle_mesh<T>(ni,nj,R,dr);CellsData<T> cells(mesh);
+    eval_GeometricalData<E>(cells,mesh);E().fence();
+    require(cells.Wall_Metrics.extent(0)==size_t(cells.Ni_total_cells)&&cells.Wall_Metrics.extent(1)==6,"Wrong wall metrics shape");
+    Kokkos::View<T**> read("read_wall_metrics",cells.Ni_physical_cells,6);
+    Kokkos::parallel_for("ReadWallMetrics",Kokkos::RangePolicy<E>(0,cells.Ni_physical_cells),KOKKOS_LAMBDA(int i){
+        // Any cell of the column reads the metrics of its wall face: use the second physical row.
+        const int k=Cell_index(i+3,4,cells.Ni_total_cells);
+        const auto a=extract_DataField<T,DataFields::Wall_xy_epsilon>(cells,k);
+        const auto b=extract_DataField<T,DataFields::Wall_xy_epsilon_epsilon>(cells,k);
+        const auto c=extract_DataField<T,DataFields::Wall_xy_eta>(cells,k);
+        read(i,0)=a[0];read(i,1)=a[1];read(i,2)=b[0];read(i,3)=b[1];read(i,4)=c[0];read(i,5)=c[1];
+    });
+    const auto h=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),read);
+    const auto centers=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Cell_Centers);
+    const double rho_m=R*std::cos(step/2); // Radius of the wall face midpoints.
+    for(int i=0;i<ni;++i)
+    {
+        const double phi=step*(i+.5),c=std::cos(phi),s=std::sin(phi);
+        near(h(i,0),-rho_m*std::sin(step)*s,tolerance<T>(),"Wall x_eps, x");
+        near(h(i,1),rho_m*std::sin(step)*c,tolerance<T>(),"Wall x_eps, y");
+        near(h(i,2),2*rho_m*(std::cos(step)-1)*c,tolerance<T>(),"Wall x_eps_eps, x");
+        near(h(i,3),2*rho_m*(std::cos(step)-1)*s,tolerance<T>(),"Wall x_eps_eps, y");
+        const int k=Cell_index(i+3,3,cells.Ni_total_cells);
+        near(h(i,4),2*(centers(k,0)-rho_m*c),tolerance<T>(),"Wall x_eta, x");
+        near(h(i,5),2*(centers(k,1)-rho_m*s),tolerance<T>(),"Wall x_eta, y");
+        near(-h(i,4)*s+h(i,5)*c,0,tolerance<T>(),"Wall x_eta is not normal to the wall");
+        require(h(i,4)*c+h(i,5)*s>0,"Wall x_eta points into the wall");
     }
 }
 template<typename T> void indexing()
@@ -217,11 +270,10 @@ template<typename T> void derived_fields()
     const auto mu_euler=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Viscosity);
     require(mu_euler(k)==T{0},"Inviscid viscosity is not exactly zero");
 }
-template<typename T,bool Isothermal> void wall()
+template<typename T> void wall()
 {
     Fixture<T> f;const auto cells=f.cells;physical_fluxes(cells);
-    constexpr auto type=Isothermal?BoundaryCondition::isothermalWall:BoundaryCondition::AdiabaticWall;
-    ApplyWallConditions<E,T,SolverTypes::RANS2D,type>(cells,f.init,T{1});E().fence();
+    ApplyWallConditions<E,T,SolverTypes::RANS2D,BoundaryCondition::AdiabaticWall>(cells,f.init);E().fence();
     const auto rho=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.rho_old);
     const auto pressure=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Pressure);
     const auto mx=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Momentum_u_old);
@@ -233,8 +285,7 @@ template<typename T,bool Isothermal> void wall()
         near(my(ghost)/rho(ghost)+my(inside)/rho(inside),0,tolerance<T>(),"No-slip v");
         near(pressure(ghost),pressure(inside),tolerance<T>(),"Wall pressure consistency");
         const double ti=pressure(inside)/rho(inside),tg=pressure(ghost)/rho(ghost);
-        if constexpr(Isothermal) near((ti+tg)/2,1,tolerance<T>(),"Isothermal face temperature");
-        else near(tg,ti,tolerance<T>(),"Adiabatic mirrored temperature");
+        near(tg,ti,tolerance<T>(),"Adiabatic mirrored temperature");
     }
 }
 template<typename T> void farfield()
@@ -270,7 +321,7 @@ template<typename T> void farfield()
 template<typename T> void jst()
 {
     Fixture<T> f(true);const auto cells=f.cells;affine_fields(cells,f.init);physical_fluxes(cells);
-    ApplyWallConditions<E,T,SolverTypes::RANS2D,BoundaryCondition::isothermalWall>(cells,f.init,T{1});
+    ApplyWallConditions<E,T,SolverTypes::RANS2D,BoundaryCondition::AdiabaticWall>(cells,f.init);
     Kokkos::deep_copy(cells.Lambdas,T{2});
     Kokkos::View<T***> result("test_jst",cells.N_physical_cells,4,4);
     Kokkos::parallel_for("TestJST",Kokkos::RangePolicy<E>(0,cells.N_physical_cells),KOKKOS_LAMBDA(int p){
@@ -287,7 +338,6 @@ template<typename T> void jst()
     const auto my=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Momentum_v_old);
     const auto energy=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.E_old);
     const int offsets[4]={-cells.Ni_total_cells,1,cells.Ni_total_cells,-1};
-    bool nonzero_wall_mass=false;
     for(int p=0;p<cells.N_physical_cells;++p) for(int d=0;d<4;++d)
     {
         const int k=f.index(p%cells.Ni_physical_cells+3,p/cells.Ni_physical_cells+3),step=offsets[d];
@@ -304,9 +354,7 @@ template<typename T> void jst()
             const long double expected=2*(second*(w[2]-w[1])-fourth*(w[3]-3*w[2]+3*w[1]-w[0]));
             near(host(p,d,c),double(expected),tolerance<T>(),"JST reference including boundary faces");
         }
-        if(p<cells.Ni_physical_cells&&d==0&&std::abs(double(host(p,d,0)))>1e-8) nonzero_wall_mass=true;
     }
-    require(nonzero_wall_mass,"JST was unexpectedly suppressed at the isothermal wall");
 }
 
 template<typename T> void viscous_flux()
@@ -314,7 +362,7 @@ template<typename T> void viscous_flux()
     Fixture<T> f(true);const auto cells=f.cells;const auto init=f.init;
     // The boundary conditions give the ghost rows their normals (their face metrics come from the geometry);
     // the affine field then replaces every state, ghosts included, so the analytic tractions hold up to the boundaries.
-    ApplyWallConditions<E,T,SolverTypes::RANS2D,BoundaryCondition::AdiabaticWall>(cells,init,T{1});
+    ApplyWallConditions<E,T,SolverTypes::RANS2D,BoundaryCondition::AdiabaticWall>(cells,init);
     ApplyRiemanInvariantConditions<E>(cells,init);E().fence();
     affine_fields(cells,f.init);physical_fluxes(cells);boundary_ghost_fluxes(cells);
     Kokkos::View<T***> results("test_flux",cells.N_physical_cells,4,12);
@@ -380,16 +428,14 @@ template<typename T> void constructors()
     const auto mesh=make_mesh<T>();
     using Viscous=SolverFVM<T,SolverTypes::RANS2D>;
     SolverFVM<T> euler({T(.2),T(1.4),T{0}},mesh);
-    Viscous iso({T(.2),T(1.4),T{0},T{250},T(.72),BoundaryCondition::isothermalWall,T(.9)},mesh);
-    require(iso.get_InitializationData().wall_condition==BoundaryCondition::isothermalWall,"Wall selector lost");
-    near(iso.get_InitializationData().wall_temperature,.9,tolerance<T>(),"Wall temperature lost");
-    near(iso.get_InitializationData().mu_inf,double(T(.2)*std::sqrt(T(1.4))/T{250}),tolerance<T>(),"Reynolds not propagated");
+    Viscous viscous({T(.2),T(1.4),T{0},T{250},T(.72),BoundaryCondition::AdiabaticWall},mesh);
+    require(viscous.get_InitializationData().wall_condition==BoundaryCondition::AdiabaticWall,"Wall selector lost");
+    near(viscous.get_InitializationData().mu_inf,double(T(.2)*std::sqrt(T(1.4))/T{250}),tolerance<T>(),"Reynolds not propagated");
     // T_inf comes last: the positional initialisations above keep the default free-stream temperature.
-    near(iso.get_InitializationData().T_inf/288.15,1.,tolerance<T>(),"Default free-stream temperature lost");
+    near(viscous.get_InitializationData().T_inf/288.15,1.,tolerance<T>(),"Default free-stream temperature lost");
     invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{0},T(.72)},mesh);},"Zero Reynolds accepted");
     invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{250},T{0}},mesh);},"Zero Prandtl accepted");
     invalid([&]{Viscous bad({T(.2),T{1},T{0},T{250},T(.72)},mesh);},"Invalid gamma accepted");
-    invalid([&]{Viscous bad({T(.2),T(1.4),T{0},T{250},T(.72),BoundaryCondition::isothermalWall,T{0}},mesh);},"Nonpositive wall temperature accepted");
     invalid([&]{Viscous bad({T(.2)},mesh);},"Viscous solver accepted the default infinite Reynolds");
     // Sutherland divides by T_inf (S = 110.4/T_inf): a nonpositive, infinite or NaN free-stream temperature is refused,
     // by Euler2D too, which does not use it.
@@ -407,14 +453,111 @@ template<typename T> void constructors()
         for(std::size_t k=0;k<mu.extent(0);++k) require(mu(k)==T{0},std::string("Euler2D viscosity is not zero ")+when);
     };
     zero_viscosity("after initialisation");
-    inviscid_run.run(1);zero_viscosity("after one iteration");
+    inviscid_run.run(1,T{0});zero_viscosity("after one iteration");
     FlowConditions<T> named;named.Mach_inf=T(.3);named.Re_inf=T{100};
     Viscous by_name(named,mesh);
     near(by_name.get_InitializationData().gamma,1.4,tolerance<T>(),"Default gamma lost");
     near(by_name.get_InitializationData().Pr_inf,1,tolerance<T>(),"Default Prandtl lost");
     require(by_name.get_InitializationData().wall_condition==BoundaryCondition::AdiabaticWall,"Default wall is not adiabatic");
     near(by_name.get_InitializationData().velocity_u_inf,double(T(.3))*std::sqrt(1.4),tolerance<T>(),"Free-stream velocity not derived");
-    invalid([&]{euler.run(-1);},"Negative iteration limit accepted");
+    invalid([&]{euler.run(-1,T{0});},"Negative iteration limit accepted");
+    // Residual tolerance: NaN, negative or infinite values would silently disable the stop, they are refused.
+    for(T tol:{std::numeric_limits<T>::quiet_NaN(),T(-1e-6),std::numeric_limits<T>::infinity()})
+        invalid([&]{euler.run(1,tol);},"Invalid residual tolerance accepted");
+    // tol = 0 never stops on the residual; a tolerance above the initial residual stops before the first step.
+    SolverFVM<T> no_stop({T(.2),T(1.4),T{0}},mesh);no_stop.run(3,T{0});
+    require(no_stop.get_StateInfo().iteration==3,"tol = 0 stopped on the residual");
+    SolverFVM<T> early_stop({T(.2),T(1.4),T{0}},mesh);early_stop.run(3,T(1e30));
+    require(early_stop.get_StateInfo().iteration==0,"A residual below the tolerance did not stop the steady run");
+}
+// Density RMS residual (dRHO/dT), its history rows, and the steady stop on both residuals.
+template<typename T> void residuals()
+{
+    const auto mesh=make_mesh<T>();
+    SolverFVM<T> solver({T(.2),T(1.4),T{0}},mesh);
+    solver.run(2,T{0});
+    // Reference: per-cell residual R/A of every component, reduced on the host.
+    const auto cells=solver.get_CellsData();const auto init=solver.get_InitializationData();
+    Kokkos::View<double**> per_cell("test_residuals",cells.N_physical_cells,4);
+    Kokkos::parallel_for("TestResiduals",Kokkos::RangePolicy<E>(0,cells.N_physical_cells),KOKKOS_LAMBDA(int p){
+        const int k=Cell_index(p%cells.Ni_physical_cells+3,p/cells.Ni_physical_cells+3,cells.Ni_total_cells);
+        const auto fd=eval_All_FluxesDissipation<T,SolverTypes::Euler2D>(cells,init,k);
+        for(int c=0;c<4;++c) per_cell(p,c)=double(fd.first[c]-fd.second[c])/double(cells.Cell_Areas(k));
+    });
+    const auto host=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),per_cell);
+    double all=0,rho=0;
+    for(int p=0;p<cells.N_physical_cells;++p) {for(int c=0;c<4;++c) all+=host(p,c)*host(p,c);rho+=host(p,0)*host(p,0);}
+    const double rms_ref=std::sqrt(all/(4.*cells.N_physical_cells)),rho_ref=std::sqrt(rho/cells.N_physical_cells);
+    const auto d=solver.eval_diagnostics(cells);
+    require(rho_ref>0,"Test state has no density residual");
+    near(d.residual_rms_rho/rho_ref,1.,1e-12,"Density RMS residual");
+    near(d.residual_rms/rms_ref,1.,1e-12,"Global RMS residual");
+
+    // History: a row every history_interval iterations, plus the initial and the last state; rms_rho in the third column.
+    SolverFVM<T> logged({T(.2),T(1.4),T{0}},mesh);std::ostringstream history;
+    logged.run(5,T{0},T{1},1000,2,&history);
+    std::istringstream lines(history.str());std::string line;std::vector<std::string> rows;
+    std::getline(lines,line);require(line.rfind("iteration,rms,rms_rho,",0)==0,"History header lacks rms_rho");
+    while(std::getline(lines,line)) rows.push_back(line);
+    require(rows.size()==4,"Expected history rows at iterations 0, 2, 4 and 5, got "+std::to_string(rows.size()));
+    const int expected_iterations[4]={0,2,4,5};
+    for(int r=0;r<4;++r) require(std::stoi(rows[r])==expected_iterations[r],"History row at the wrong iteration");
+    const auto last=logged.eval_diagnostics(logged.get_CellsData());
+    std::istringstream fields(rows.back());std::string iteration,rms,rms_rho;
+    std::getline(fields,iteration,',');std::getline(fields,rms,',');std::getline(fields,rms_rho,',');
+    near(std::stod(rms_rho)/last.residual_rms_rho,1.,1e-12,"History rms_rho is not the last density residual");
+    invalid([&]{logged.run(1,T{0},T{1},1000,0);},"Zero history interval accepted");
+
+    // Steady stop: both residuals must reach tol. A tol between the two values does not stop, one above both does.
+    SolverFVM<T> probe({T(.2),T(1.4),T{0}},mesh);
+    const auto initial=probe.eval_diagnostics(probe.get_CellsData());
+    const double low=std::min(initial.residual_rms,initial.residual_rms_rho),high=std::max(initial.residual_rms,initial.residual_rms_rho);
+    require(high>1.01*low,"Test state has equal residuals: the two-residual stop cannot be told apart");
+    probe.run(1,T(std::sqrt(low*high)));
+    require(probe.get_StateInfo().iteration==1,"Stopped while one residual was still above tol");
+    SolverFVM<T> stopped({T(.2),T(1.4),T{0}},mesh);
+    stopped.run(1,T(1.001*high));
+    require(stopped.get_StateInfo().iteration==0,"Did not stop with both residuals below tol");
+}
+// Grid study: one output directory per mesh inside results/study_NNNN, a failing mesh skipped and listed in study.csv.
+template<typename T> void study()
+{
+    const auto root=std::filesystem::temp_directory_path()/(std::string("cmfsn-study-")+(std::is_same_v<T,float>?"float":"double"));
+    std::filesystem::remove_all(root);std::filesystem::create_directories(root);
+    // Mesh files in the import format: "Ni Nj", then every X, then every Y.
+    const auto write_mesh=[&](const std::string& name,int ni,int nj){
+        const auto mesh=make_mesh<T>(false,ni,nj);
+        const auto x=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),mesh.X),y=Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),mesh.Y);
+        std::ofstream file(root/name);file<<std::setprecision(17)<<mesh.Ni<<' '<<mesh.Nj<<'\n';
+        for(int n=0;n<mesh.N_nodes;++n) file<<x(n)<<'\n';
+        for(int n=0;n<mesh.N_nodes;++n) file<<y(n)<<'\n';
+        return root/name;
+    };
+    const std::vector<std::filesystem::path> meshes={write_mesh("a.x",10,8),root/"missing.x",write_mesh("b.x",12,8)};
+    CMFSN::SimulationParameters<T> parameters;
+    parameters.flow={T(.2),T(1.4),T{0}};parameters.iterations=2;parameters.tol=T{0};parameters.output_root=root/"results";
+    const int failures=CMFSN::RunStudy<T,SolverTypes::Euler2D,TimeEvolutionScheme::Steady,RungeKuttaScheme::Jameson>(parameters,meshes);
+    require(failures==1,"Expected exactly one failed mesh, got "+std::to_string(failures));
+    const auto study_dir=root/"results"/"study_0001";
+    for(const char* name:{"a.x","b.x"})
+    {
+        require(std::filesystem::exists(study_dir/name/"solution.vts"),std::string("Missing solution for ")+name);
+        std::ifstream history(study_dir/name/"residuals.csv");std::string line;int rows=-1;
+        while(std::getline(history,line)) ++rows;
+        require(rows==3,std::string("Expected history rows at iterations 0, 1 and 2 for ")+name);
+    }
+    require(!std::filesystem::exists(study_dir/"missing.x"/"solution.vts"),"A solution was written for the missing mesh");
+    // The failure does not stop the study: the mesh after it was still computed (checked above), and every mesh is listed.
+    std::ifstream summary(study_dir/"study.csv");std::string line;std::vector<std::string> rows;
+    std::getline(summary,line);require(line=="mesh,directory,status,message","Unexpected study.csv header");
+    while(std::getline(summary,line)) rows.push_back(line);
+    require(rows.size()==3,"study.csv must list every mesh");
+    require(rows[0].find(",ok,")!=std::string::npos&&rows[1].find(",failed,")!=std::string::npos&&rows[2].find(",ok,")!=std::string::npos,"Wrong mesh status in study.csv");
+    // A second study goes to the next directory; duplicated mesh names are refused before any computation.
+    CMFSN::RunStudy<T,SolverTypes::Euler2D,TimeEvolutionScheme::Steady,RungeKuttaScheme::Jameson>(parameters,{meshes[0]});
+    require(std::filesystem::exists(root/"results"/"study_0002"/"a.x"/"solution.vts"),"Second study did not get its own directory");
+    invalid([&]{CMFSN::RunStudy<T,SolverTypes::Euler2D,TimeEvolutionScheme::Steady,RungeKuttaScheme::Jameson>(parameters,{meshes[0],meshes[0]});},"Duplicated mesh names accepted");
+    summary.close();std::filesystem::remove_all(root);
 }
 template<typename T,bool Carpenter> void rk()
 {
@@ -422,7 +565,7 @@ template<typename T,bool Carpenter> void rk()
     constexpr auto scheme=Carpenter?RungeKuttaScheme::CarpenterKennedy:RungeKuttaScheme::Jameson;
     SolverFVM<T,SolverTypes::RANS2D,TimeEvolutionScheme::UnSteady,scheme> solver({T(.2),T(1.4),T{0},T{250},T(.72)},mesh);
     std::ostringstream history;
-    solver.run_until(1e-6,T(.05),1000,&history,{},1,100);
+    solver.run_until(1e-6,T(.05),1000,1,&history,{},1,100);
     near(solver.get_StateInfo().physical_time,1e-6,1e-12,"Final time not reached");
     require(solver.get_StateInfo().iteration>0,"No physical step executed");
     const auto diagnostics=solver.eval_diagnostics(solver.get_CellsData());
@@ -430,7 +573,7 @@ template<typename T,bool Carpenter> void rk()
 
     // Stage storage left by a previous step must not leak into the next one.
     Kokkos::deep_copy(solver.get_CellsData().D_history,std::numeric_limits<T>::quiet_NaN());
-    solver.run_until(2e-6,T(.05),1000,nullptr,{},1,100);
+    solver.run_until(2e-6,T(.05),1000,1,nullptr,{},1,100);
     const auto after=solver.eval_diagnostics(solver.get_CellsData());
     require(after.invalid_cells==0&&std::isfinite(after.residual_rms),"Stale stage storage leaked into the new step");
 
@@ -441,7 +584,7 @@ template<typename T,bool Carpenter> void rk()
         SolverFVM<T,SolverTypes::RANS2D,TimeEvolutionScheme::UnSteady,RungeKuttaScheme::Jameson> jameson({T(.2),T(1.4),T{0},T{250},T(.72)},mesh);
         const auto fields=[](const CellsData<T>& cells){return std::array{Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.rho_old),Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Momentum_u_old),Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.Momentum_v_old),Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),cells.E_old)};};
         const auto start=fields(carpenter.get_CellsData());
-        carpenter.run(1,T(.05),1000,nullptr,{},1,1e-4);jameson.run(1,T(.05),1000,nullptr,{},1,1e-4);
+        carpenter.run(1,T{0},T(.05),1000,1,nullptr,{},1,1e-4);jameson.run(1,T{0},T(.05),1000,1,nullptr,{},1,1e-4);
         near(carpenter.get_StateInfo().time_step,jameson.get_StateInfo().time_step,0,"Schemes did not take the same step");
         const auto ck=fields(carpenter.get_CellsData()),reference=fields(jameson.get_CellsData());
         const auto& cells=carpenter.get_CellsData();
@@ -508,13 +651,15 @@ template<typename T> void export_solution()
 template<typename T> void dispatch(const std::string& name)
 {
     if(name=="indexing") indexing<T>();else if(name=="thermodynamics") thermodynamics<T>();
-    else if(name=="geometry") geometry<T>();else if(name=="gradients") gradients<T>();
+    else if(name=="geometry") geometry<T>();else if(name=="wall_metrics") wall_metrics<T>();
+    else if(name=="gradients") gradients<T>();
     else if(name=="constitutive") constitutive<T>();else if(name=="periodic") periodic<T>();
     else if(name=="derived_fields") derived_fields<T>();
-    else if(name=="wall_adiabatic") wall<T,false>();else if(name=="wall_isothermal") wall<T,true>();
+    else if(name=="wall_adiabatic") wall<T>();
     else if(name=="farfield") farfield<T>();else if(name=="viscous_flux") viscous_flux<T>();
     else if(name=="jst") jst<T>();
     else if(name=="time_step") time_step<T>();else if(name=="constructors") constructors<T>();
+    else if(name=="residuals") residuals<T>();else if(name=="study") study<T>();
     else if(name=="rk_jameson") rk<T,false>();else if(name=="rk_ck") rk<T,true>();
     else if(name=="export") export_solution<T>();else throw std::invalid_argument("Unknown test case: "+name);
 }

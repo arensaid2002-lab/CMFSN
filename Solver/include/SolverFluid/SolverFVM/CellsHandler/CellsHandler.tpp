@@ -32,10 +32,8 @@ namespace Solver
         if constexpr (SType == SolverTypes::RANS2D)
             if (!positive(flow.Re_inf) || !positive(flow.Pr_inf))
                 throw std::invalid_argument("RANS2D requires positive finite Reynolds and Prandtl numbers");
-        if (flow.wall_condition != BoundaryCondition::AdiabaticWall && flow.wall_condition != BoundaryCondition::isothermalWall)
+        if (flow.wall_condition != BoundaryCondition::AdiabaticWall)
             throw std::invalid_argument("Unknown wall boundary condition");
-        if (flow.wall_condition == BoundaryCondition::isothermalWall && !positive(flow.wall_temperature))
-            throw std::invalid_argument("Isothermal wall temperature must be positive, finite and nondimensional");
         CellOps::eval_GeometricalData<ExecSpace>(CellsData_, MeshData_);
         ExecSpace().fence("Cell geometry ready");
         initialize_cells();
