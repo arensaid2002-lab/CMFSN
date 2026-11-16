@@ -5,6 +5,8 @@ whose j = 0 row of cells touches the wall (O-mesh) and whose cell data hold the 
 """
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 
@@ -13,11 +15,16 @@ def _field(mesh, name, default):
 
 
 WALL_PRESSURE_METHODS = ("auto", "rizzi", "cell", "extrapolated")
-# "auto" is the default: the pressure of the solver's own wall flux.
-#   Euler2D (no "reynolds_inf" in the file): the slip wall extrapolates the pressure into the ghost cells with
-#   Rizzi's normal-momentum relation and imposes P_f = p1 - P_eta / 2 on the wall face -> "rizzi".
+# "auto" is the default: the pressure of the solver's own wall flux, read from the file's metadata.
+#   Euler2D files carrying "wall_pressure_rizzi" (written by FileIO since the Rizzi wall): the slip wall
+#   extrapolates the pressure into the ghost cells with Rizzi's normal-momentum relation and imposes
+#   P_f = p1 - P_eta / 2 on the wall face -> "rizzi".
 #   RANS2D: the no-slip ghost copies p1 (zero normal pressure gradient), so the face pressure is p1 -> "cell".
+#   Euler2D files without the marker were written before it: their wall flux cannot be told from the file.
+#   They get "cell" (the slip wall of the solver before commit 22c4910) with a warning; pass "rizzi"
+#   explicitly for a solution computed with the Rizzi wall before the marker existed (e.g. study_0004).
 # "extrapolated" (linear, from the first two cells) is kept for comparison only.
+RIZZI_WALL_MARKER = "wall_pressure_rizzi"
 
 
 def _is_viscous(mesh):
@@ -26,12 +33,20 @@ def _is_viscous(mesh):
 
 
 def resolve_wall_pressure_method(mesh, method):
-    """The method actually used: "auto" becomes "rizzi" for an inviscid solution, "cell" for a viscous one."""
+    """The method actually used. "auto": "cell" for a viscous solution; for an inviscid one, "rizzi" when the
+    file carries the Rizzi wall marker, "cell" (with a warning) when it does not."""
     if method not in WALL_PRESSURE_METHODS:
         raise ValueError(f"unknown wall pressure method {method!r}, expected one of {WALL_PRESSURE_METHODS}")
-    if method == "auto":
-        return "cell" if _is_viscous(mesh) else "rizzi"
-    return method
+    if method != "auto":
+        return method
+    if _is_viscous(mesh):
+        return "cell"
+    if _field(mesh, RIZZI_WALL_MARKER, 0.0) > 0:
+        return "rizzi"
+    warnings.warn(f"inviscid solution without the {RIZZI_WALL_MARKER!r} metadata: wall pressure taken at the first "
+                  "cells (slip wall before commit 22c4910); pass the 'rizzi' method for a Rizzi-wall solution "
+                  "written before the marker existed", stacklevel=2)
+    return "cell"
 
 
 def _cell_centroids(nodes):
@@ -73,7 +88,7 @@ def _rizzi_wall_pressure(mesh):
 def wall_pressure(mesh, method="auto"):
     """Pressure on every wall face (j = 0), in the order of the wall cells.
 
-    "auto": "rizzi" for an inviscid solution, "cell" for a viscous one (the solver's wall flux).
+    "auto": the solver's wall flux, see resolve_wall_pressure_method ("rizzi" for a marked Euler2D file).
     "rizzi": the Euler2D wall face pressure P_f = p1 - P_eta / 2 (see _rizzi_wall_pressure).
     "cell": the pressure of the first cell, at its centre.
     "extrapolated": linear extrapolation to the face along the wall normal from the first two cells,

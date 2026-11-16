@@ -153,6 +153,8 @@ namespace IO
             metadata("reynolds_inf", init_data.Re_inf);
             metadata("t_inf_kelvin", init_data.T_inf);
         }
+        else // Inviscid run: the slip wall imposes Rizzi's wall pressure (CellOps.h, ApplyWallConditions); read by UI/aero.py.
+            metadata("wall_pressure_rizzi", T{1});
         if (physical_time >= 0 && Kokkos::isfinite(physical_time))
             output << "<DataArray type=\"Float64\" Name=\"TimeValue\" NumberOfTuples=\"1\" format=\"ascii\">" << std::setprecision(17) << physical_time << "</DataArray>\n";
         if (time_step >= 0 && Kokkos::isfinite(time_step))

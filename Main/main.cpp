@@ -16,14 +16,14 @@ int main(int argc, char* argv[])
     parameters.flow.Pr_inf = T(0.72);
     parameters.flow.wall_condition = Solver::BoundaryCondition::AdiabaticWall;
     parameters.CFL = T(3);
-    parameters.iterations = 100000;
-    parameters.tol = T(1e-16); // Steady only: stops when the global and the density RMS residuals both reach it.
+    parameters.iterations = 700000;
+    parameters.tol = T(1e-13); // Steady only: stops when the density RMS residual reaches it.
     parameters.final_time = 1.; // UnSteady only.
     parameters.output_root = "results";
     // Grid study (Vassberg & Jameson family): x.7 = 32x32 cells, x.6 = 64, x.5 = 128, x.4 = 256, x.3 = 512, x.2 = 1024, x.1 = 2048.
     // Each mesh is written to results/study_NNNN/<mesh file name>; study.csv lists the status of every mesh.
     const auto mesh_directory = std::filesystem::path(__FILE__).parent_path().parent_path() / "NACA_0012_mesh_PLOT3D_format";
-    const std::vector<std::filesystem::path> meshes = { mesh_directory / "x.7", mesh_directory / "x.6", mesh_directory / "x.5", mesh_directory / "x.4" };
+    const std::vector<std::filesystem::path> meshes = { mesh_directory / "x.7", mesh_directory / "x.6", mesh_directory / "x.5", mesh_directory / "x.4", mesh_directory / "x.3" };
     parameters.report_interval = 1000;
     parameters.history_interval = 1; // residuals.csv rows (rms, rms_rho, ...).
     parameters.snapshot_interval = 1;

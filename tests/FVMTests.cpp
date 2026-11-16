@@ -508,16 +508,16 @@ template<typename T> void residuals()
     near(std::stod(rms_rho)/last.residual_rms_rho,1.,1e-12,"History rms_rho is not the last density residual");
     invalid([&]{logged.run(1,T{0},T{1},1000,0);},"Zero history interval accepted");
 
-    // Steady stop: both residuals must reach tol. A tol between the two values does not stop, one above both does.
+    // Steady stop: only the density residual is compared with tol. Just below it does not stop; a tol between
+    // the density and the global residuals stops even though the global one is still above it.
     SolverFVM<T> probe({T(.2),T(1.4),T{0}},mesh);
     const auto initial=probe.eval_diagnostics(probe.get_CellsData());
-    const double low=std::min(initial.residual_rms,initial.residual_rms_rho),high=std::max(initial.residual_rms,initial.residual_rms_rho);
-    require(high>1.01*low,"Test state has equal residuals: the two-residual stop cannot be told apart");
-    probe.run(1,T(std::sqrt(low*high)));
-    require(probe.get_StateInfo().iteration==1,"Stopped while one residual was still above tol");
+    require(initial.residual_rms>1.01*initial.residual_rms_rho,"Test state needs a global residual above the density one");
+    probe.run(1,T(.999*initial.residual_rms_rho));
+    require(probe.get_StateInfo().iteration==1,"Stopped while the density residual was still above tol");
     SolverFVM<T> stopped({T(.2),T(1.4),T{0}},mesh);
-    stopped.run(1,T(1.001*high));
-    require(stopped.get_StateInfo().iteration==0,"Did not stop with both residuals below tol");
+    stopped.run(1,T(std::sqrt(initial.residual_rms_rho*initial.residual_rms)));
+    require(stopped.get_StateInfo().iteration==0,"Did not stop with the density residual below tol");
 }
 // Grid study: one output directory per mesh inside results/study_NNNN, a failing mesh skipped and listed in study.csv.
 template<typename T> void study()

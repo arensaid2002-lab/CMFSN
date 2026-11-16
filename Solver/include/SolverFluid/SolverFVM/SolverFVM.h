@@ -20,7 +20,7 @@ namespace Solver
             using StateObserver = std::function<void(const StateInfo&, const CellsData<T>&)>;
             const StateInfo& get_StateInfo() const { return state_info; }
             SolverFVM(const FlowConditions<T>& flow, const MeshData_Structured<T>& mesh) : cells_handler(flow, mesh) {}
-            // Steady: stops once both the global and the density RMS residuals reach tol (0 disables the stop).
+            // Steady: stops once the density RMS residual reaches tol (0 disables the stop).
             // report_interval paces the console, history_interval the rows of the residual history.
             void run(int iterations, T tol, T CFL = T{1}, int report_interval = 1000, int history_interval = 1, std::ostream* history = nullptr, StateObserver observer = {}, int snapshot_interval = 1, double final_time = std::numeric_limits<double>::infinity());
             void run_until(double final_time, T CFL = T{1}, int report_interval = 1000, int history_interval = 1, std::ostream* history = nullptr, StateObserver observer = {}, int snapshot_interval = 1, int max_iterations = 200000);

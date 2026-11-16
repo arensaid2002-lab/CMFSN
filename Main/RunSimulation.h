@@ -21,7 +21,7 @@ namespace CMFSN
         T CFL = T{1};
         int iterations = 100000;  // Steady: number of iterations. UnSteady: maximum number of steps.
         double final_time = 1.;   // UnSteady only.
-        T tol = T(1e-6);          // Steady only: stops when the global and the density RMS residuals both reach it.
+        T tol = T(1e-6);          // Steady only: stops when the density RMS residual reaches it.
         std::filesystem::path mesh_path;
         std::filesystem::path output_root = "results";
         std::filesystem::path output_directory; // Empty: a new output_root/run_NNNN. Otherwise written here (created if needed).

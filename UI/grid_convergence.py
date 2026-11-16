@@ -243,8 +243,8 @@ def plot_entropy(entries, slope, slope_excluded, exclude_radius, path):
     save_figure(figure, path)
 
 
-def plot_solution(entry, chord_ref, pressure_method, path):
-    """Figs. 13-16 style: wall Cp (upper and lower surfaces) and Mach lines every 0.05, sonic line bold."""
+def plot_solution(entry, chord_ref, pressure_method, path, mach_step=0.025):
+    """Figs. 13-16 style: wall Cp (upper and lower surfaces) and Mach lines every mach_step, sonic line bold."""
     mesh = entry["mesh"]
     ni, nj, _ = mesh.dimensions
     nodes = np.asarray(mesh.points, dtype=float).reshape(nj, ni, 3)[:, :, :2]
@@ -276,7 +276,7 @@ def plot_solution(entry, chord_ref, pressure_method, path):
     cell_centres = .25 * (nodes[:-1, :-1] + nodes[:-1, 1:] + nodes[1:, 1:] + nodes[1:, :-1])
     close = lambda array: np.concatenate([array, array[:, :1]], axis=1)
     cx, cy, cm = close(cell_centres[..., 0]), close(cell_centres[..., 1]), close(mach)
-    levels = np.arange(.05, entry["mach_max"] + .05, .05)
+    levels = np.round(mach_step * np.arange(1, int(entry["mach_max"] / mach_step) + 2), 10)  # Rounded: 1.0 is found exactly.
     mach_axis.contour(cx, cy, cm, levels=levels[~np.isclose(levels, 1.0)], colors="k", linewidths=.6)
     if entry["mach_min"] < 1 < entry["mach_max"]:
         mach_axis.contour(cx, cy, cm, levels=[1.0], colors="k", linewidths=2.0)
@@ -285,7 +285,7 @@ def plot_solution(entry, chord_ref, pressure_method, path):
     mach_axis.set_xlim(leading[0] - .6 * span, leading[0] + 1.6 * span)
     mach_axis.set_ylim(-.9 * span, .9 * span)
     mach_axis.set_aspect("equal")
-    mach_axis.set_title(f"Mach lines every 0.05 (sonic line bold)   MIN {entry['mach_min']:.7f}   MAX {entry['mach_max']:.7f}", fontsize=9)
+    mach_axis.set_title(f"Mach lines every {mach_step:g} (sonic line bold)   MIN {entry['mach_min']:.7f}   MAX {entry['mach_max']:.7f}", fontsize=9)
     figure.tight_layout()
     save_figure(figure, path)
 
@@ -296,10 +296,13 @@ def main(argv=None):
     parser.add_argument("--chord-ref", type=float, default=1.0, help="reference chord (paper: 1)")
     parser.add_argument("--x-ref", type=float, default=0.25, help="moment centre x (paper: 0.25)")
     parser.add_argument("--exclude-radius", type=float, default=0.05, help="entropy error also computed without the cells this close to the trailing edge (0: off)")
-    parser.add_argument("--wall-pressure", default="auto", choices=WALL_PRESSURE_METHODS, help="wall pressure for Cp and the coefficients: auto = the solver's wall face pressure (rizzi for Euler2D, cell for RANS2D); rizzi = P_f = p1 - P_eta/2; cell = first cell; extrapolated = linear from the first two cells")
+    parser.add_argument("--wall-pressure", default="auto", choices=WALL_PRESSURE_METHODS, help="wall pressure for Cp and the coefficients: auto = the solver's wall face pressure (rizzi for an Euler2D file with the wall_pressure_rizzi marker, cell for RANS2D or an older Euler2D file); rizzi = P_f = p1 - P_eta/2; cell = first cell; extrapolated = linear from the first two cells")
+    parser.add_argument("--mach-step", type=float, default=0.025, help="spacing of the Mach lines on the solution figures (paper: 0.05)")
     parser.add_argument("--format", default="png", choices=("png", "pdf", "svg"), help="figure format")
     parser.add_argument("--output", type=Path, help="output directory (default: <study>/post)")
     args = parser.parse_args(argv)
+    if not (args.mach_step > 0 and np.isfinite(args.mach_step)):
+        parser.error("--mach-step must be positive and finite")
 
     study = args.study or latest_study()
     if study is None or not (study / "study.csv").is_file():
@@ -323,7 +326,7 @@ def main(argv=None):
     plot_coefficients(entries, case, output / f"coefficients.{args.format}")
     plot_entropy(entries, slope, slope_excluded, args.exclude_radius, output / f"entropy.{args.format}")
     for entry in entries:
-        plot_solution(entry, args.chord_ref, args.wall_pressure, output / f"solution_{entry['name']}.{args.format}")
+        plot_solution(entry, args.chord_ref, args.wall_pressure, output / f"solution_{entry['name']}.{args.format}", args.mach_step)
     print(f"Written to {output}")
     return 0
 

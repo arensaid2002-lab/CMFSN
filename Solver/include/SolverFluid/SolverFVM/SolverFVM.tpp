@@ -73,9 +73,9 @@ namespace Solver
                         throw std::runtime_error("Remaining physical duration is outside the scalar precision range");
                 }
             }
-            // Steady stop: both the global and the density RMS residuals must reach tol.
+            // Steady stop: the density RMS residual (dRHO/dT) must reach tol.
             if constexpr (TEScheme == TimeEvolutionScheme::Steady)
-                if (current.residual_rms <= double(tol) && current.residual_rms_rho <= double(tol))
+                if (current.residual_rms_rho <= double(tol))
                     break;
             T time_step;
             if constexpr (RKScheme == RungeKuttaScheme::CarpenterKennedy)
