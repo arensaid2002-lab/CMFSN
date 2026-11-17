@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include "nacawing/NACA.hpp"   // NacaParams {m, p, t}
 
 namespace nacawing {
 
@@ -10,7 +11,10 @@ namespace nacawing {
         double y;
     };
     double cosineX(int i, int n, double xEnd = 1.0);
-    std::vector<Point2D> upperSurface(double m, double p,double t, int n, double xEnd = 1.0);
-    std::vector<Point2D> lowerSurface(double m, double p, double t, int n, double xEnd = 1.0);
+    // naca = the airfoil shape (m, p, t, fractions of the chord, see fromDigits).
+    // n = number of points per surface, xEnd = last x (1 = TE). n and xEnd are the sampling, not the shape,
+    // so they stay separate arguments.
+    std::vector<Point2D> upperSurface(const NacaParams& naca, int n, double xEnd = 1.0);
+    std::vector<Point2D> lowerSurface(const NacaParams& naca, int n, double xEnd = 1.0);
 
 } // namespace nacawing

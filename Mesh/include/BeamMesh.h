@@ -7,7 +7,7 @@
 
 namespace mesh {
 
-        std::vector<nacawing::Point2D> nacaCambrurePoint(double m, double p, double x); //t not used reusing y_c from NACA.cpp
+        std::vector<nacawing::Point2D> nacaCambrurePoint(const nacawing::NacaParams& naca, double x); //x = fraction of chord; uses m and p only (t not used), y_c from NACA.cpp
 
         struct NastranData {
             int id;

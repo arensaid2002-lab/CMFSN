@@ -29,11 +29,11 @@ namespace nacawing {
             return w.c_t / w.c_r;
         }   
 
-    std::vector<Point2D> sectionLoop(double m, double p, double t, int n)
+    std::vector<Point2D> sectionLoop(const NacaParams& naca, int n)
         {
             // Point 0 is the TE upper passes to LE then lower to its TE
-            std::vector<Point2D> upper = upperSurface(m, p, t, n);
-            std::vector<Point2D> lower = lowerSurface(m, p, t, n);
+            std::vector<Point2D> upper = upperSurface(naca, n);
+            std::vector<Point2D> lower = lowerSurface(naca, n);
             std::reverse(upper.begin(), upper.end());
 
             upper.insert(upper.end(), lower.begin() + 1, lower.end());

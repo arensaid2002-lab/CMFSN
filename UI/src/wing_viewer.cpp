@@ -144,7 +144,7 @@ int main()
                                .twistPivot = twistPivot, .xRef = xRef, .twistExponent = twistExponent,
                                .spacing = spacing, .type = chordLaw};
         int Ns = static_cast<int>(std::lround(stations));
-        std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(airfoil.m, airfoil.p, airfoil.t, n);
+        std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(airfoil, n);
         std::vector<std::vector<nacawing::Point3D>> wing = nacawing::wingSurface(w, loop, Ns);   // spacing is in w now
 
         // xRef line: the point (xRef, 0) of the unit chord, placed at every station y_j of the wing.
@@ -156,8 +156,8 @@ int main()
 
         // Meshes on the same Ns stations: nj = Ns - 1 panels/elements along the span.
         int nj = Ns - 1;
-        mesh::VlmGrid vlm = mesh::vlmGrid(w, mesh::nacaCambrure(airfoil.m, airfoil.p, niVlm + 1), nj);      // spacing = w.spacing
-        std::vector<mesh::NastranData> beam = mesh::BeamMesh(w, mesh::nacaCambrurePoint(airfoil.m, airfoil.p, static_cast<double>(beamFraction)), nj);
+        mesh::VlmGrid vlm = mesh::vlmGrid(w, mesh::nacaCambrure(airfoil, niVlm + 1), nj);      // spacing = w.spacing
+        std::vector<mesh::NastranData> beam = mesh::BeamMesh(w, mesh::nacaCambrurePoint(airfoil, static_cast<double>(beamFraction)), nj);
 
         // 2. Camera. Drag outside the panel to turn, wheel to zoom.
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(GetMousePosition(), panel)) {

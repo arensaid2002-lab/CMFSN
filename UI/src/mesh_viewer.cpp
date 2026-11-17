@@ -60,8 +60,8 @@ int main()
         // where y_t = 0): node (0, 0) is the trailing edge, so we take x_TE from there, no second copy.
         const double xTE = grid.at(0, 0).x;
         const int n = 400;
-        std::vector<nacawing::Point2D> up = nacawing::upperSurface(naca.m, naca.p, naca.t, n, xTE);
-        std::vector<nacawing::Point2D> lo = nacawing::lowerSurface(naca.m, naca.p, naca.t, n, xTE);
+        std::vector<nacawing::Point2D> up = nacawing::upperSurface(naca, n, xTE);
+        std::vector<nacawing::Point2D> lo = nacawing::lowerSurface(naca, n, xTE);
         airfoil.clear();
         for (int k = n - 1; k >= 0; --k) airfoil.push_back({static_cast<float>(lo[k].x), static_cast<float>(-lo[k].y)});
         for (int k = 1; k < n; ++k)      airfoil.push_back({static_cast<float>(up[k].x), static_cast<float>(-up[k].y)});

@@ -25,16 +25,16 @@ int main()
     SetWindowMinSize(640, 360);             // small enough to shrink, big enough for the buttons
     SetTargetFPS(60);                       // run the loop at most 60 times per second
 
-    double m = 0.02; // maximum camber
-    double p = 0.4;  // location of maximum camber
-    double t = 0.12; // maximum thickness
+    nacawing::NacaParams airfoil{.m = 0.02,   // maximum camber
+                                 .p = 0.4,    // location of maximum camber
+                                 .t = 0.12};  // maximum thickness
     int n = 101;     // number of points to generate
-    
-    std::vector<nacawing::Point2D> upper = nacawing::upperSurface(m, p, t, n); // NACA 
-    std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(m, p, t, n);
 
-    // NACA buttons (added with Claude): the digits M P TT shown by the spinners, NACA 2412 to match m, p, t above.
-    // They can be invalid for a moment (2012 on the way to 2412), so they are kept apart from m, p, t.
+    std::vector<nacawing::Point2D> upper = nacawing::upperSurface(airfoil, n); // NACA
+    std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(airfoil, n);
+
+    // NACA buttons (added with Claude): the digits M P TT shown by the spinners, NACA 2412 to match airfoil above.
+    // They can be invalid for a moment (2012 on the way to 2412), so they are kept apart from airfoil.
     int digitM = 2, digitP = 4, digitTT = 12;
     bool editM = false, editP = false, editTT = false;   // true while typing in that number box
     
@@ -76,10 +76,10 @@ int main()
 
         nacawing::NacaParams wanted = nacawing::fromDigits(digitM, digitP, digitTT);
         bool valid = (digitM == 0) == (digitP == 0);   // camber M needs its position P, and P means nothing without M
-        if (valid && (wanted.m != m || wanted.p != p || wanted.t != t)) {
-            m = wanted.m; p = wanted.p; t = wanted.t;
-            upper = nacawing::upperSurface(m, p, t, n);
-            lower = nacawing::lowerSurface(m, p, t, n);
+        if (valid && (wanted.m != airfoil.m || wanted.p != airfoil.p || wanted.t != airfoil.t)) {
+            airfoil = wanted;
+            upper = nacawing::upperSurface(airfoil, n);
+            lower = nacawing::lowerSurface(airfoil, n);
         }
         if (!valid)
             DrawText("M and P must be both 0 or both > 0", static_cast<int>(right - S(230)), F(45), F(10), RED);

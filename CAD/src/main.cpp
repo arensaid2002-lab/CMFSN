@@ -35,8 +35,8 @@ int main()
     std::cout << "m=" << m << ", p=" << p << ", t=" << t << '\n';
 
 
-    std::vector<nacawing::Point2D> upper = nacawing::upperSurface(m, p, t, n); // NACA 
-    std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(m, p, t, n);
+    std::vector<nacawing::Point2D> upper = nacawing::upperSurface(airfoil, n); // NACA
+    std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(airfoil, n);
     std::ofstream file("build/airfoil.csv");
     file << "x_upper,y_upper,x_lower,y_lower\n"; // header line of csv
         for (size_t i = 0; i < upper.size(); ++i) {

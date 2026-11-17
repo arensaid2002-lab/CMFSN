@@ -48,7 +48,7 @@ enum class ChordLaw  { Trapeze, Ellipse };
         double z;
     };
 
-    std::vector<Point2D> sectionLoop(double m, double p, double t, int n);
+    std::vector<Point2D> sectionLoop(const NacaParams& naca, int n);   // n points per surface -> 2n - 1 points
 
 
 

@@ -8,9 +8,9 @@
 
 namespace mesh {
 
-    std::vector<nacawing::Point2D> nacaCambrurePoint(double m, double p, double x){     //nx is the chosen point on the cambrure line
+    std::vector<nacawing::Point2D> nacaCambrurePoint(const nacawing::NacaParams& naca, double x){     //x is the chosen point on the cambrure line
         std::vector<nacawing::Point2D> cambrure;
-            double y_c= nacawing::y_c(m, p, x);
+            double y_c= nacawing::y_c(naca.m, naca.p, x);
             cambrure.push_back(nacawing::Point2D{x, y_c});
         return cambrure; 
         }

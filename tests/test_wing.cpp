@@ -140,7 +140,7 @@ int main()
     // (upper TE -> upper surface -> LE -> lower surface -> lower TE).
     // ---------------------------------------------------------------------
     const int n = 5;
-    std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(0.02, 0.4, 0.12, n);
+    std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(nacawing::NacaParams{.m = 0.02, .p = 0.4, .t = 0.12}, n);
     failures += check("sectionLoop size = 2n-1", static_cast<double>(loop.size()), 2.0 * n - 1.0);
     failures += check("sectionLoop[0].x  upper TE", loop[0].x, 1.0001, 1e-4);
     failures += check("sectionLoop[0].y  upper TE above chord", loop[0].y, 0.0013, 1e-4);   // open TE (-0.1015)

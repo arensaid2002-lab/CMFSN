@@ -9,11 +9,11 @@
 
 namespace mesh {
 
-    std::vector<nacawing::Point2D> nacaCambrure(double m, double p, int n){     //n = number of points; ni = n-1
+    std::vector<nacawing::Point2D> nacaCambrure(const nacawing::NacaParams& naca, int n){     //n = number of points; ni = n-1
         std::vector<nacawing::Point2D> cambrure;
-        for (int i = 0; i < n; i++) {   
+        for (int i = 0; i < n; i++) {
             double x = nacawing::cosineX(i, n, 1);
-            double y_c= nacawing::y_c(m, p, x);
+            double y_c= nacawing::y_c(naca.m, naca.p, x);
             cambrure.push_back(nacawing::Point2D{x, y_c});
         }
         return cambrure; 

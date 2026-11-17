@@ -7,7 +7,7 @@
 
 namespace mesh {
 
-        std::vector<nacawing::Point2D> nacaCambrure(double m, double p, int n); //t not used reusing y_c from NACA.cpp
+        std::vector<nacawing::Point2D> nacaCambrure(const nacawing::NacaParams& naca, int n); //n points; uses m and p only (t not used), y_c from NACA.cpp
 
         std::vector<nacawing::Point2D> cambrureDuProfil(const std::vector<nacawing::Point2D>& profil); //expects: a closed loop at unit chord in Selig order (TE → upper → LE → lower → TE), like sectionLoop.
 

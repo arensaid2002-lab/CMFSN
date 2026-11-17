@@ -40,11 +40,11 @@ int main()
     // ---------------------------------------------------------------------
     // 1. nacaCambrurePoint: ONE point (f, y_c(f)) on the unit-chord camber line.
     // ---------------------------------------------------------------------
-    std::vector<nacawing::Point2D> pt = mesh::nacaCambrurePoint(m, p, f);
+    std::vector<nacawing::Point2D> pt = mesh::nacaCambrurePoint(nacawing::NacaParams{.m = m, .p = p, .t = 0.12}, f);   // NACA 2412
     failures += check("nacaCambrurePoint number of points", static_cast<double>(pt.size()), 1.0);
     failures += check("nacaCambrurePoint x", pt[0].x, f);
     failures += check("nacaCambrurePoint y = y_c(0.38)", pt[0].y, yc);
-    failures += check("nacaCambrurePoint 0012 y = 0", mesh::nacaCambrurePoint(0.0, 0.0, f)[0].y, 0.0);
+    failures += check("nacaCambrurePoint 0012 y = 0", mesh::nacaCambrurePoint(nacawing::NacaParams{.m = 0.0, .p = 0.0, .t = 0.12}, f)[0].y, 0.0);
 
     // ---------------------------------------------------------------------
     // 2. BeamMesh, no twist, no dihedral, default SineTip spacing.

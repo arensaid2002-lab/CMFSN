@@ -32,7 +32,7 @@ int main()
     // ---------------------------------------------------------------------
     // 1. nacaCambrure: camber line y_c(x) at n points, cosine spacing from the LE to the TE.
     // ---------------------------------------------------------------------
-    std::vector<nacawing::Point2D> c2412 = mesh::nacaCambrure(0.02, 0.4, 5);   // NACA 2412: m = 0.02, p = 0.4
+    std::vector<nacawing::Point2D> c2412 = mesh::nacaCambrure(nacawing::NacaParams{.m = 0.02, .p = 0.4, .t = 0.12}, 5);   // NACA 2412
     failures += check("nacaCambrure number of points", static_cast<double>(c2412.size()), 5.0);
     failures += check("nacaCambrure LE x", c2412.front().x, 0.0);
     failures += check("nacaCambrure LE y", c2412.front().y, 0.0);
@@ -43,7 +43,7 @@ int main()
     failures += check("nacaCambrure 2412 y_c(0.5)", c2412[2].y, 0.02 / 0.36 * 0.35);
 
     // NACA 0012 has no camber (m = p = 0): every y must be 0, with no division by zero (NaN).
-    std::vector<nacawing::Point2D> c0012 = mesh::nacaCambrure(0.0, 0.0, 5);
+    std::vector<nacawing::Point2D> c0012 = mesh::nacaCambrure(nacawing::NacaParams{.m = 0.0, .p = 0.0, .t = 0.12}, 5);   // NACA 0012
     double maxY = 0.0;
     for (const auto& q : c0012) maxY = std::max(maxY, std::abs(q.y));
     failures += check("nacaCambrure 0012 all y = 0", maxY, 0.0);
@@ -54,7 +54,7 @@ int main()
     //    (x_u + x_l)/2 = x_c and (y_u + y_l)/2 = y_c, because the +/- y_t terms cancel.
     // ---------------------------------------------------------------------
     const int n = 9;                                                        // points per surface
-    std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(0.02, 0.4, 0.12, n);   // 2n - 1 = 17 points
+    std::vector<nacawing::Point2D> loop = nacawing::sectionLoop(nacawing::NacaParams{.m = 0.02, .p = 0.4, .t = 0.12}, n);   // 2n - 1 = 17 points
     std::vector<nacawing::Point2D> cam = mesh::cambrureDuProfil(loop);
     failures += check("cambrureDuProfil number of points", static_cast<double>(cam.size()), static_cast<double>(n));
     failures += check("cambrureDuProfil starts at the LE (x)", cam.front().x, 0.0);

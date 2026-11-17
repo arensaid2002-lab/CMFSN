@@ -77,7 +77,7 @@ namespace mesh {
         //4.Calculating R1 from perimeter 
         //TOP
         int M = 2000;
-        std::vector<nacawing::Point2D> upper = nacawing::upperSurface(naca.m, naca.p, naca.t, M , x_TE);
+        std::vector<nacawing::Point2D> upper = nacawing::upperSurface(naca, M , x_TE);
         double L = 0.0;
         std::complex<double> prev = zeta_LE;   // le LE, sans passer par toCircle
 
@@ -89,7 +89,7 @@ namespace mesh {
             prev = cur;
             }
         //BOTTOM
-        std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(naca.m, naca.p, naca.t, M , x_TE);
+        std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(naca, M , x_TE);
         prev = zeta_LE;   // le LE, sans passer par toCircle
         for (int k = 1; k < M; ++k) {
             // calcule le point z_k du profil
