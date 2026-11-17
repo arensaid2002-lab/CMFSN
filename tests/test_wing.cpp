@@ -14,7 +14,7 @@
 //   https://www.fzt.haw-hamburg.de/pers/Scholz/HOOU/AircraftDesign_7_WingDesign.pdf
 // Planform law used by sectionAt:
 //   Trapeze: c = c_r [1 - (1 - lambda) eta]
-//   Ellipse: c = c_r sqrt(1 - eta^2)                      (c_t is not used)
+//   Ellipse: c = c_r max(sqrt(1 - eta^2), 0.01)            (c_t is not used; tip chord = 0.01 c_r, not 0)
 //   x_LE    = y tan(sweep) + xRef (c_r - c)               (the xRef line is straight, swept by "sweep")
 //   twist   eps = twistTip eta^p, about the point x_p = twistPivot c   (twistPivot and xRef are separate)
 
@@ -87,9 +87,15 @@ int main()
     ell.type = nacawing::ChordLaw::Ellipse;
     failures += check("Ellipse chord root (y = 0)", chord(ell, 0.0), 1.0);
     failures += check("Ellipse chord y = b/4", chord(ell, 2.0), std::sqrt(0.75));   // eta = 0.5 -> sqrt(1 - 1/4)
-    double cTip = chord(ell, 4.0);                                                 // eta = 1 -> sqrt(0) = 0
+    // At the tip sqrt(1 - eta^2) = 0, but sectionAt clamps the chord to a minimum of 0.01 c_r
+    // (a zero chord would give zero-area panels at the tip).
+    double cTip = chord(ell, 4.0);                                                 // eta = 1 -> max(0, 0.01) c_r
     failures += check("Ellipse chord tip is a number (not NaN)", std::isnan(cTip) ? 1.0 : 0.0, 0.0);
-    failures += check("Ellipse chord tip = 0 exactly", cTip, 0.0, 0.0);
+    failures += check("Ellipse chord tip = 0.01 c_r (minimum)", cTip, 0.01);
+    // The minimum follows c_r: c_r = 2 -> tip chord 0.02.
+    nacawing::WingParams ellBig = ell;
+    ellBig.c_r = 2.0;
+    failures += check("Ellipse chord tip = 0.01 c_r (c_r = 2)", chord(ellBig, 4.0), 0.02);
 
     // c_t must not change anything for the ellipse: same section with c_t = 0.5 and c_t = 2.
     nacawing::WingParams ell2 = ell;
@@ -177,22 +183,18 @@ int main()
     failures += check("sectionAt dihedral lift", nacawing::sectionAt(dih, le, 4.0)[0].z, 4.0 * std::tan(deg(10.0)));
 
     // ---------------------------------------------------------------------
-    // Ellipse tip: c = 0, so every loop point collapses onto one point
-    //   (xRef c_r + (b/2) tan(sweep), b/2, (b/2) tan(dihedral)), even with twist.
+    // Ellipse tip: the chord is clamped to c = 0.01 c_r, so the tip is a tiny section, not a point.
+    // b = 8, c_r = 1, xRef = 0.25, sweep = 0, no twist, at y = b/2 = 4:
+    //   x_LE = xRef (c_r - c) = 0.25 (1 - 0.01) = 0.2475
+    //   x_TE = x_LE + c      = 0.2475 + 0.01   = 0.2575
+    //   x_c/4 = x_LE + c/4   = 0.2475 + 0.0025 = 0.25   (the xRef line is still straight)
     // ---------------------------------------------------------------------
     nacawing::WingParams tipW{.b = 8.0, .c_r = 1.0, .c_t = 0.5,
-                              .sweep = 10.0, .twistTip = -4.0, .dihedral = 5.0, .xRef = 0.25,
+                              .sweep = 0.0, .twistTip = 0.0, .dihedral = 0.0, .xRef = 0.25,
                               .type = nacawing::ChordLaw::Ellipse};
-    std::vector<nacawing::Point3D> tip = nacawing::sectionAt(tipW, loop, 4.0);
-    double worst = 0.0;     // largest distance from the expected point, over the whole loop
-    for (const auto& q : tip) {
-        double d = std::abs(q.x - (0.25 + 4.0 * std::tan(deg(10.0))))
-                 + std::abs(q.y - 4.0)
-                 + std::abs(q.z - 4.0 * std::tan(deg(5.0)));
-        if (std::isnan(d)) d = 1.0e9;   // a NaN must fail, not be silently ignored
-        worst = std::max(worst, d);
-    }
-    failures += check("Ellipse tip: all points collapse to one point", worst, 0.0, 1e-12);
+    failures += check("Ellipse tip LE x = 0.2475", xAt(tipW, 0.0, 4.0), 0.2475);
+    failures += check("Ellipse tip TE x = 0.2575", xAt(tipW, 1.0, 4.0), 0.2575);
+    failures += check("Ellipse tip c/4 x = 0.25", xAt(tipW, 0.25, 4.0), 0.25);
 
     // ---------------------------------------------------------------------
     // Twist exponent: eps = eps_t eta^p. p = 2, eps_t = -8 deg, eta = 0.5 -> eps = -8/4 = -2 deg.
@@ -253,6 +255,19 @@ int main()
     // Last gap (tip) smaller than the first gap (root): 1 = true.
     failures += check("SineTip closer at the tip",
                       (sine[0][4].y - sine[0][3].y) < (sine[0][1].y - sine[0][0].y) ? 1.0 : 0.0, 1.0);
+
+    // Ellipse + SineTip, nj = 24 panels -> Ns = 25 stations. Station j = 23 (one before the tip):
+    //   eta = sin(pi/2 * 23/24), y = 4 eta, c = sqrt(1 - eta^2) = cos(pi/2 * 23/24) = 0.065403...
+    // 0.0654 > 0.01, so the minimum must NOT change this chord (it only acts at the tip).
+    nacawing::WingParams ellSine = tipW;
+    ellSine.spacing = nacawing::SpanSpacing::SineTip;
+    const double eta23 = std::sin(0.5 * std::numbers::pi * 23.0 / 24.0);
+    std::vector<std::vector<nacawing::Point3D>> ellLine = nacawing::wingSurface(ellSine, line, 25);   // line = chord (0,0) -> (1,0)
+    failures += check("Ellipse SineTip nj = 24, station 23: y", ellLine[0][23].y, 4.0 * eta23);
+    failures += check("Ellipse SineTip nj = 24, station 23: chord unchanged",
+                      ellLine[1][23].x - ellLine[0][23].x, std::sqrt(1.0 - eta23 * eta23));
+    failures += check("Ellipse SineTip nj = 24, station 23: chord ~ 0.065403",
+                      ellLine[1][23].x - ellLine[0][23].x, 0.065403, 1e-6);
 
     std::cout << failures << " check(s) failed\n";
     return failures == 0 ? 0 : 1;
