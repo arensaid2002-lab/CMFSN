@@ -1,7 +1,7 @@
 #include "nacawing/3Dwing.hpp"
 #include <cmath>
 #include <vector>
-#include <algorithm>
+#include <algorithm> //std::max
 #include <numbers>
 
 namespace nacawing {
@@ -55,6 +55,7 @@ namespace nacawing {
             if (w.type == ChordLaw ::Ellipse){
                 c = w.c_r * std::sqrt(std::max(0.0, 1 - eta*eta));       // 
                 }
+            c = std::max(c, 0.01 * w.c_r);   // #include <algorithm>    
             double epsilon = AngleToRad(w.twistTip * std::pow(eta,w.twistExponent));
             double x_LE = y * std::tan(AngleToRad(w.sweep)) + w.xRef * (w.c_r - c);
             double x_p = c * w.twistPivot;
