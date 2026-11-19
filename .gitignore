@@ -6,5 +6,6 @@ build/
 
 # Generated results: ignore every file under Results/, but keep the folders (their .gitkeep)
 /Results/**
+/Figures
 !/Results/**/
 !/Results/**/.gitkeep

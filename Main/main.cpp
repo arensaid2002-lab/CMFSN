@@ -93,8 +93,8 @@ int main()
     // =====================================================================
     // Upper and lower surfaces at unit chord, same points as CAD/src/main.cpp.
     {
-        std::vector<nacawing::Point2D> upper = nacawing::upperSurface(airfoil.m, airfoil.p, airfoil.t, nSurface);
-        std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(airfoil.m, airfoil.p, airfoil.t, nSurface);
+        std::vector<nacawing::Point2D> upper = nacawing::upperSurface(airfoil, nSurface);
+        std::vector<nacawing::Point2D> lower = nacawing::lowerSurface(airfoil, nSurface);
         const fs::path file = geomDir / ("airfoil_" + airfoilName + ".csv");
         std::ofstream out(file);
         out << "x_upper,y_upper,x_lower,y_lower\n";
@@ -122,7 +122,7 @@ int main()
     //     nacaCambrure gives ni + 1 points on the camber line (cosine spacing in x),
     //     vlmGrid places that line at nj + 1 span stations with chord, sweep, twist and dihedral.
     {
-        std::vector<nacawing::Point2D> camber = mesh::nacaCambrure(airfoil.m, airfoil.p, vlmNi + 1);
+        std::vector<nacawing::Point2D> camber = mesh::nacaCambrure(airfoil, vlmNi + 1);
         mesh::VlmGrid grid = mesh::vlmGrid(meshWing, camber, vlmNj);
         const fs::path file = vlmDir / ("vlm_" + airfoilName + "_ni" + std::to_string(vlmNi)
                                         + "_nj" + std::to_string(vlmNj) + ".dat");
@@ -136,7 +136,7 @@ int main()
     //     the local chord, sweep, twist and dihedral. Ids start at 1; element e joins nodes e and e + 1.
     {
         meshWing.spacing = beamSpacing;
-        std::vector<nacawing::Point2D> beamPoint = mesh::nacaCambrurePoint(airfoil.m, airfoil.p, beamXc);
+        std::vector<nacawing::Point2D> beamPoint = mesh::nacaCambrurePoint(airfoil, beamXc);
         std::vector<mesh::NastranData> nodes = mesh::BeamMesh(meshWing, beamPoint, vlmNj);
         const fs::path file = structDir / ("beam_" + airfoilName + "_nj" + std::to_string(vlmNj) + ".txt");
         mesh::writeNastran(nodes, file.string());
