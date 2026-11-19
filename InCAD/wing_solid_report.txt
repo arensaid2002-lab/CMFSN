@@ -1,0 +1,11 @@
+InCAD solid report - NACA0012 (interieur de l'aile)
+noeuds                            : 67289
+tetraedres (cellules)             : 237620
+tetraedres de volume <= 0         : 0
+volume : somme des tetraedres     : 0.19158904 m3
+volume enferme par la peau        : 0.19158904 m3   (les deux doivent etre egaux : pas de trou)
+volume attendu (formule)          : 0.19179227 m3
+ecart relatif (tetraedres/formule): -0.0010596042
+qualite SICN : pire               : 0.022684028
+part des tetraedres SICN >= 0.1   : 99.913307 %   (seuil 0.1 provisoire)
+temps (aile + maillage)           : 12.523481 s

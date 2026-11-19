@@ -1,0 +1,10 @@
+InCAD - NACA0012
+sections importees (Phase 2)      : 13 x 201 points
+surfaces de peau                  : 2
+ecart max points importes/surface : 2.9973395e-07 m
+volume (a partir du maillage)      : 0.1911833 m3
+volume attendu (formule)          : 0.19179227 m3
+ecart relatif de volume           : -0.0031751041
+aire de peau (maillage)           : 6.1370524 m2
+aire de la face d'emplanture      : 0.081838388 m2
+maillage : 45033 noeuds, 83804 triangles
