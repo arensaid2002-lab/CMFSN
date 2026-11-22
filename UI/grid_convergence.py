@@ -1,13 +1,18 @@
 """Grid study post-processing: coefficients against Vassberg & Jameson (J. Aircraft 47(4), 2010),
 residual histories, wall Cp, Mach lines, and the spatial order of the scheme from the entropy error.
 
-Usage:   python UI/grid_convergence.py                       (most recent results/study_*)
+Usage:   python UI/grid_convergence.py                       (menu: pick a study, one of its meshes or a run)
          python UI/grid_convergence.py results/study_0001 --exclude-radius 0.05 --format pdf
-Output:  <study>/post/ : table.csv, residuals, coefficients, entropy and one solution figure per mesh.
+         python UI/grid_convergence.py results/study_0001/x.4   (one mesh of a study)
+         python UI/grid_convergence.py results/run_0001         (a single run)
+Output:  <directory>/post/ : table.csv, residuals, coefficients, solution figures and, for a study,
+         the entropy order. A single solution has no order: its entropy error is only printed.
 
-The study directory is written by Main (RunStudy): study.csv, then one sub-directory per mesh with
-solution.vts and residuals.csv. Coefficients use the paper's reference chord 1 and moment centre
-x = 0.25 unless --chord-ref / --x-ref say otherwise.
+A study directory is written by Main (RunStudy): study.csv, then one sub-directory per mesh with
+solution.vts and residuals.csv. A run directory (RunSimulation) or a mesh sub-directory holds one
+solution.vts and residuals.csv. Without a directory and with no terminal to ask in, the most recent
+study is used. Coefficients use the paper's reference chord 1 and moment centre x = 0.25 unless
+--chord-ref / --x-ref say otherwise.
 """
 from __future__ import annotations
 
@@ -68,11 +73,54 @@ def reference_case(mach, alpha_deg):
     return None
 
 
+RESULT_PATTERNS = ("results", "build/*/results", "out/build/*/results")
+
+
+def is_study(directory):
+    return (directory / "study.csv").is_file()
+
+
+def is_solution(directory):
+    return (directory / "solution.vts").is_file()
+
+
 def latest_study(roots=None):
     roots = roots or (Path.cwd(), Path(__file__).resolve().parent.parent)
-    patterns = ("results/study_*", "build/*/results/study_*", "out/build/*/results/study_*")
-    found = {path.resolve() for root in roots for pattern in patterns for path in Path(root).glob(pattern) if (path / "study.csv").is_file()}
+    found = {path.resolve() for root in roots for pattern in RESULT_PATTERNS for path in Path(root).glob(f"{pattern}/study_*") if is_study(path)}
     return max(found, key=lambda path: (path / "study.csv").stat().st_mtime, default=None)
+
+
+def list_results(roots=None):
+    """Every study (study.csv), each of its meshes and every single run (solution.vts), studies first then
+    runs, each in name order; a study's meshes follow it. Returns (label, path) pairs."""
+    repository = Path(__file__).resolve().parent.parent
+    roots = roots or (Path.cwd(), repository)
+    results = sorted({path.resolve() for root in roots for pattern in RESULT_PATTERNS for path in Path(root).glob(pattern) if path.is_dir()})
+    choices = []
+    for result in results:
+        studies = sorted(path for path in result.glob("study_*") if is_study(path))
+        runs = sorted(path for path in result.glob("run_*") if is_solution(path))
+        prefix = f"{result.relative_to(repository).as_posix()}/" if result.is_relative_to(repository) else f"{result}/"
+        for study in studies:
+            meshes = sorted((path for path in study.iterdir() if path.is_dir() and is_solution(path)), key=lambda path: path.name)
+            choices.append((f"{prefix}{study.name}   (study, {len(meshes)} mesh{'es' if len(meshes) != 1 else ''})", study))
+            choices += [(f"    {prefix}{study.name}/{mesh.name}", mesh) for mesh in meshes]
+        choices += [(f"{prefix}{run.name}   (run)", run) for run in runs]
+    return choices
+
+
+def choose_directory(choices):
+    """Numbered menu on the terminal; returns the chosen path, None if the user quits (empty answer or q).
+    EOFError (no input to read) is left to the caller."""
+    for number, (label, _) in enumerate(choices, 1):
+        print(f"[{number:>2}] {label}")
+    while True:
+        answer = input(f"Number (1-{len(choices)}, Enter or q to quit): ").strip()
+        if answer in ("", "q", "Q"):
+            return None
+        if answer.isdigit() and 1 <= int(answer) <= len(choices):
+            return choices[int(answer) - 1][1]
+        print(f"  {answer!r} is not a number between 1 and {len(choices)}")
 
 
 def read_history(path):
@@ -82,34 +130,39 @@ def read_history(path):
     return np.atleast_1d(history) if history.dtype.names else None
 
 
+def load_entry(directory, name, chord_ref, x_ref, exclude_radius, pressure_method):
+    """Coefficients, residuals, Mach range and entropy error of the solution.vts in directory."""
+    mesh = pv.read(directory / "solution.vts")
+    ni, nj, _ = mesh.dimensions
+    field = lambda key, default: float(mesh.field_data[key][0]) if key in mesh.field_data else default
+    history = read_history(directory / "residuals.csv")
+    last = history[-1] if history is not None else None
+    mach = np.asarray(mesh.cell_data["mach"], dtype=float)
+    coefficients = aerodynamic_coefficients(mesh, chord_ref=chord_ref, x_ref=x_ref, pressure_method=pressure_method) or {"cl": np.nan, "cd": np.nan, "cm": np.nan}
+    return {
+        "name": name, "mesh": mesh, "history": history,
+        "nc_i": ni - 1, "nc_j": nj - 1, "cells": (ni - 1) * (nj - 1),
+        "mach_inf": field("mach_inf", np.nan), "alpha_deg": np.degrees(field("alpha_rad", 0.0)),
+        "iterations": int(field("iteration", last["iteration"] if last is not None else -1)),
+        "rms": float(last["rms"]) if last is not None else np.nan,
+        "rms_rho": float(last["rms_rho"]) if last is not None and "rms_rho" in history.dtype.names else np.nan,
+        "cl": coefficients["cl"], "cd": coefficients["cd"], "cm": coefficients["cm"],
+        "mach_min": float(np.nanmin(mach)), "mach_max": float(np.nanmax(mach)),
+        "entropy": entropy_error(mesh),
+        "entropy_excluded": entropy_error(mesh, exclude_radius) if exclude_radius > 0 else np.nan,
+    }
+
+
 def load_study(study, chord_ref, x_ref, exclude_radius, pressure_method):
     """One entry per mesh computed without error, ordered by increasing NC."""
     entries, failed = [], []
     with open(study / "study.csv", newline="", encoding="utf-8") as file:
         for row in csv.DictReader(file):
             directory = study / row["directory"]
-            if row["status"] != "ok" or not (directory / "solution.vts").is_file():
+            if row["status"] != "ok" or not is_solution(directory):
                 failed.append((row["directory"], row["message"] or "no solution"))
                 continue
-            mesh = pv.read(directory / "solution.vts")
-            ni, nj, _ = mesh.dimensions
-            field = lambda name, default: float(mesh.field_data[name][0]) if name in mesh.field_data else default
-            history = read_history(directory / "residuals.csv")
-            last = history[-1] if history is not None else None
-            mach = np.asarray(mesh.cell_data["mach"], dtype=float)
-            coefficients = aerodynamic_coefficients(mesh, chord_ref=chord_ref, x_ref=x_ref, pressure_method=pressure_method) or {"cl": np.nan, "cd": np.nan, "cm": np.nan}
-            entries.append({
-                "name": row["directory"], "mesh": mesh, "history": history,
-                "nc_i": ni - 1, "nc_j": nj - 1, "cells": (ni - 1) * (nj - 1),
-                "mach_inf": field("mach_inf", np.nan), "alpha_deg": np.degrees(field("alpha_rad", 0.0)),
-                "iterations": int(field("iteration", last["iteration"] if last is not None else -1)),
-                "rms": float(last["rms"]) if last is not None else np.nan,
-                "rms_rho": float(last["rms_rho"]) if last is not None and "rms_rho" in history.dtype.names else np.nan,
-                "cl": coefficients["cl"], "cd": coefficients["cd"], "cm": coefficients["cm"],
-                "mach_min": float(np.nanmin(mach)), "mach_max": float(np.nanmax(mach)),
-                "entropy": entropy_error(mesh),
-                "entropy_excluded": entropy_error(mesh, exclude_radius) if exclude_radius > 0 else np.nan,
-            })
+            entries.append(load_entry(directory, row["directory"], chord_ref, x_ref, exclude_radius, pressure_method))
     entries.sort(key=lambda entry: entry["cells"])
     return entries, failed
 
@@ -159,10 +212,13 @@ def print_table(entries, case, slope, slope_excluded, exclude_radius):
             if values is not None:
                 print(f"{'':>10} {name + ' (paper)':>11} {'':>8} {'':>10} {values[0]:>12.9f} {values[1]:>12.9f} {values[2]:>12.9f}"
                       f"   dCD = {(entry['cd'] - values[1]) / COUNT:+.2f} counts")
-    print(f"Entropy error: observed order (least squares over the meshes) = {slope:.3f}", end="")
-    if np.isfinite(slope_excluded):
-        print(f", {slope_excluded:.3f} without the cells within {exclude_radius} of the trailing edge", end="")
-    print()
+    if len(entries) >= 2:
+        print(f"Entropy error: observed order (least squares over the meshes) = {slope:.3f}", end="")
+        if np.isfinite(slope_excluded):
+            print(f", {slope_excluded:.3f} without the cells within {exclude_radius} of the trailing edge", end="")
+        print()
+    else:
+        print("Entropy error: one mesh only, no observed order (it needs at least two meshes).")
     if any(entry["mach_max"] >= 1 for entry in entries):
         print("Warning: supersonic pockets (Mach max >= 1). Shocks create entropy: the entropy error no longer measures the order.")
     if case is None:
@@ -243,7 +299,7 @@ def plot_entropy(entries, slope, slope_excluded, exclude_radius, path):
     save_figure(figure, path)
 
 
-def plot_solution(entry, chord_ref, pressure_method, path, mach_step=0.025):
+def plot_solution(entry, chord_ref, pressure_method, path, mach_step=0.02):
     """Figs. 13-16 style: wall Cp (upper and lower surfaces) and Mach lines every mach_step, sonic line bold."""
     mesh = entry["mesh"]
     ni, nj, _ = mesh.dimensions
@@ -292,22 +348,42 @@ def plot_solution(entry, chord_ref, pressure_method, path, mach_step=0.025):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("study", nargs="?", type=Path, help="results/study_NNNN (default: the most recent one)")
+    parser.add_argument("directory", nargs="?", type=Path, help="results/study_NNNN, one of its meshes (results/study_NNNN/x.4) or results/run_NNNN (default: a menu, or the most recent study without a terminal)")
     parser.add_argument("--chord-ref", type=float, default=1.0, help="reference chord (paper: 1)")
     parser.add_argument("--x-ref", type=float, default=0.25, help="moment centre x (paper: 0.25)")
     parser.add_argument("--exclude-radius", type=float, default=0.05, help="entropy error also computed without the cells this close to the trailing edge (0: off)")
     parser.add_argument("--wall-pressure", default="auto", choices=WALL_PRESSURE_METHODS, help="wall pressure for Cp and the coefficients: auto = the solver's wall face pressure (rizzi for an Euler2D file with the wall_pressure_rizzi marker, cell for RANS2D or an older Euler2D file); rizzi = P_f = p1 - P_eta/2; cell = first cell; extrapolated = linear from the first two cells")
-    parser.add_argument("--mach-step", type=float, default=0.025, help="spacing of the Mach lines on the solution figures (paper: 0.05)")
+    parser.add_argument("--mach-step", type=float, default=0.02, help="spacing of the Mach lines on the solution figures")
     parser.add_argument("--format", default="png", choices=("png", "pdf", "svg"), help="figure format")
-    parser.add_argument("--output", type=Path, help="output directory (default: <study>/post)")
+    parser.add_argument("--output", type=Path, help="output directory (default: <directory>/post)")
     args = parser.parse_args(argv)
     if not (args.mach_step > 0 and np.isfinite(args.mach_step)):
         parser.error("--mach-step must be positive and finite")
 
-    study = args.study or latest_study()
-    if study is None or not (study / "study.csv").is_file():
-        parser.error("no study directory with a study.csv found")
-    entries, failed = load_study(study, args.chord_ref, args.x_ref, args.exclude_radius, args.wall_pressure)
+    directory = args.directory
+    if directory is None:
+        try:
+            if not sys.stdin.isatty():
+                raise EOFError
+            choices = list_results()
+            if not choices:
+                parser.error("no study or run found under results/")
+            directory = choose_directory(choices)
+            if directory is None:
+                return 0
+        except EOFError:  # No terminal to ask in (on Windows, NUL counts as a terminal but has nothing to read).
+            directory = latest_study()
+            if directory is None:
+                parser.error("no study directory with a study.csv found")
+            print(f"No answer to read: most recent study {directory}")
+    if is_study(directory):
+        kind = "Study"
+        entries, failed = load_study(directory, args.chord_ref, args.x_ref, args.exclude_radius, args.wall_pressure)
+    elif is_solution(directory):
+        kind = "Solution"
+        entries, failed = [load_entry(directory, directory.name, args.chord_ref, args.x_ref, args.exclude_radius, args.wall_pressure)], []
+    else:
+        parser.error(f"{directory} holds neither a study.csv nor a solution.vts")
     for name, message in failed:
         print(f"Skipped {name}: {message}")
     if not entries:
@@ -316,15 +392,16 @@ def main(argv=None):
     if len(cases) != 1:
         parser.error(f"the meshes of a study must share the free stream, found {sorted(cases)}")
     case = reference_case(entries[0]["mach_inf"], entries[0]["alpha_deg"])
-    output = args.output or study / "post"
+    output = args.output or directory / "post"
     output.mkdir(parents=True, exist_ok=True)
 
-    print(f"Study {study}  (M = {entries[0]['mach_inf']:g}, alpha = {entries[0]['alpha_deg']:g} deg, chord {args.chord_ref:g}, x_ref {args.x_ref:g}, wall pressure {args.wall_pressure})")
+    print(f"{kind} {directory}  (M = {entries[0]['mach_inf']:g}, alpha = {entries[0]['alpha_deg']:g} deg, chord {args.chord_ref:g}, x_ref {args.x_ref:g}, wall pressure {args.wall_pressure})")
     slope, slope_excluded = write_table(entries, case, output / "table.csv")
     print_table(entries, case, slope, slope_excluded, args.exclude_radius)
     plot_residuals(entries, output / f"residuals.{args.format}")
     plot_coefficients(entries, case, output / f"coefficients.{args.format}")
-    plot_entropy(entries, slope, slope_excluded, args.exclude_radius, output / f"entropy.{args.format}")
+    if len(entries) >= 2:  # The order needs at least two meshes.
+        plot_entropy(entries, slope, slope_excluded, args.exclude_radius, output / f"entropy.{args.format}")
     for entry in entries:
         plot_solution(entry, args.chord_ref, args.wall_pressure, output / f"solution_{entry['name']}.{args.format}", args.mach_step)
     print(f"Written to {output}")
